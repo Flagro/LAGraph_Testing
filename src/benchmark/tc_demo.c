@@ -1,15 +1,13 @@
 //------------------------------------------------------------------------------
-// LAGraph/src/benchmark/tc_demo.c: benchmark for LAGr_TriangleCount 
+// LAGraph/Test2/TriangeCount/test_ct.c: test for LAGraph_TriangleCount_Methods
 //------------------------------------------------------------------------------
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University
 
 //------------------------------------------------------------------------------
+
+// Contributed by Tim Davis, Texas A&M
 
 // Usage:  test_tc < matrixmarketfile.mtx
 //         test_tc matrixmarketfile.mtx
@@ -31,7 +29,7 @@
 // #define NTHREAD_LIST 6
 // #define THREAD_LIST 64, 32, 24, 12, 8, 4
 
-#define LG_FREE_ALL                 \
+#define LAGraph_FREE_ALL            \
 {                                   \
     LAGraph_Delete (&G, NULL) ;     \
     GrB_free (&A) ;                 \
@@ -44,19 +42,19 @@ char *method_name (int method, int sorting)
     char *s ;
     switch (method)
     {
-        case LAGraph_TriangleCount_Default:    s = "default (SandiaDot)             " ; break ;
-        case LAGraph_TriangleCount_Burkhardt:  s = "Burkhardt:  sum ((A^2) .* A) / 6" ; break ;
-        case LAGraph_TriangleCount_Cohen:      s = "Cohen:      sum ((L*U) .* A) / 2" ; break ;
-        case LAGraph_TriangleCount_Sandia:     s = "Sandia:     sum ((L*L) .* L)    " ; break ;
-        case LAGraph_TriangleCount_Sandia2:    s = "Sandia2:    sum ((U*U) .* U)    " ; break ;
-        case LAGraph_TriangleCount_SandiaDot:  s = "SandiaDot:  sum ((L*U') .* L)   " ; break ;
-        case LAGraph_TriangleCount_SandiaDot2: s = "SandiaDot2: sum ((U*L') .* U)   " ; break ;
+        case 0:  s = "minitri:    nnz (A*E == 2) / 3  " ; break ;
+        case 1:  s = "Burkhardt:  sum ((A^2) .* A) / 6" ; break ;
+        case 2:  s = "Cohen:      sum ((L*U) .* A) / 2" ; break ;
+        case 3:  s = "Sandia:     sum ((L*L) .* L)    " ; break ;
+        case 4:  s = "Sandia2:    sum ((U*U) .* U)    " ; break ;
+        case 5:  s = "SandiaDot:  sum ((L*U') .* L)   " ; break ;
+        case 6:  s = "SandiaDot2: sum ((U*L') .* U)   " ; break ;
         default: abort ( ) ;
     }
 
-    if (sorting == LAGraph_TriangleCount_Descending) sprintf (t, "%s sort: descending degree", s) ;
-    else if (sorting == LAGraph_TriangleCount_Ascending) sprintf (t, "%s ascending degree", s) ;
-    else if (sorting == LAGraph_TriangleCount_AutoSort) sprintf (t, "%s auto-sort", s) ;
+    if (sorting == -1) sprintf (t, "%s sort: descending degree", s) ;
+    else if (sorting == 1) sprintf (t, "%s ascending degree", s) ;
+    else if (sorting == 2) sprintf (t, "%s auto-sort", s) ;
     else sprintf (t, "%s sort: none", s) ;
     return (t) ;
 }
@@ -90,7 +88,7 @@ int main (int argc, char **argv)
     int nt = NTHREAD_LIST ;
     int Nthreads [20] = { 0, THREAD_LIST } ;
     int nthreads_max ;
-    LAGRAPH_TRY (LAGraph_GetNumThreads (&nthreads_max, NULL)) ;
+    LAGraph_TRY (LAGraph_GetNumThreads (&nthreads_max, NULL)) ;
     if (Nthreads [1] == 0)
     {
         // create thread list automatically
@@ -115,16 +113,16 @@ int main (int argc, char **argv)
     //--------------------------------------------------------------------------
 
     char *matrix_name = (argc > 1) ? argv [1] : "stdin" ;
-    LAGRAPH_TRY (readproblem (&G, NULL,
-        true, true, true, NULL, false, argc, argv)) ;
-    LAGRAPH_TRY (LAGraph_DisplayGraph (G, LAGraph_SHORT, stdout, msg)) ;
+    if (readproblem (&G, NULL,
+        true, true, true, NULL, false, argc, argv) != 0) ERROR ;
+    LAGraph_TRY (LAGraph_DisplayGraph (G, 2, stdout, msg)) ;
 
     // determine the row degree property
-    LAGRAPH_TRY (LAGraph_Property_RowDegree (G, msg)) ;
+    LAGraph_TRY (LAGraph_Property_RowDegree (G, msg)) ;
 
     GrB_Index n, nvals ;
-    GRB_TRY (GrB_Matrix_nrows (&n, G->A)) ;
-    GRB_TRY (GrB_Matrix_nvals (&nvals, G->A)) ;
+    GrB_TRY (GrB_Matrix_nrows (&n, G->A)) ;
+    GrB_TRY (GrB_Matrix_nvals (&nvals, G->A)) ;
 
     //--------------------------------------------------------------------------
     // triangle counting
@@ -135,28 +133,26 @@ int main (int argc, char **argv)
 
 #if 0
     // check # of triangles
-    LAGRAPH_TRY (LAGraph_Tic (tic, NULL)) ;
-    LAGRAPH_TRY (LG_check_tri (&ntsimple, G, NULL)) ;
+    LAGraph_TRY (LAGraph_Tic (tic, NULL)) ;
+    LAGraph_TRY (LG_check_tri (&ntsimple, G, NULL)) ;
     double tsimple ;
-    LAGRAPH_TRY (LAGraph_Toc (&tsimple, tic, NULL)) ;
+    LAGraph_TRY (LAGraph_Toc (&tsimple, tic, NULL)) ;
     printf ("# of triangles: %" PRId64 " slow time: %g sec\n",
         ntsimple, tsimple) ;
 #endif
 
     // warmup for more accurate timing, and also print # of triangles
-    LAGRAPH_TRY (LAGraph_Tic (tic, NULL)) ;
+    LAGraph_TRY (LAGraph_Tic (tic, NULL)) ;
     printf ("\nwarmup method: ") ;
-    int presort = LAGraph_TriangleCount_AutoSort ; // = 2 (auto selection)
+    int presort = 2 ;
     print_method (stdout, 6, presort) ;
 
-    // warmup method:
-    // LAGraph_TriangleCount_SandiaDot2 = 6,   // sum (sum ((U * L') .* U))
-    LAGRAPH_TRY (LAGr_TriangleCount (&ntriangles, G,
-        LAGraph_TriangleCount_SandiaDot2, &presort, msg) );
+    LAGraph_TRY (LAGraph_TriangleCount_Methods(&ntriangles, G, 6, &presort,
+        msg) );
     printf ("# of triangles: %" PRIu64 "\n", ntriangles) ;
     print_method (stdout, 6, presort) ;
     double ttot ;
-    LAGRAPH_TRY (LAGraph_Toc (&ttot, tic, NULL)) ;
+    LAGraph_TRY (LAGraph_Toc (&ttot, tic, NULL)) ;
     printf ("nthreads: %3d time: %12.6f rate: %6.2f (SandiaDot2, one trial)\n",
             nthreads_max, ttot, 1e-6 * nvals / ttot) ;
 
@@ -185,7 +181,7 @@ int main (int argc, char **argv)
     {
         // for (int sorting = -1 ; sorting <= 2 ; sorting++)
 
-        int sorting = LAGraph_TriangleCount_AutoSort ; // just use auto-sort
+        int sorting = 2 ;       // just use auto-sort
         {
             printf ("\nMethod: ") ;
             int presort ;
@@ -206,19 +202,19 @@ int main (int argc, char **argv)
             {
                 int nthreads = Nthreads [t] ;
                 if (nthreads > nthreads_max) continue ;
-                LAGRAPH_TRY (LAGraph_SetNumThreads (nthreads, msg)) ;
+                LAGraph_TRY (LAGraph_SetNumThreads (nthreads, msg)) ;
                 GrB_Index nt2 ;
                 double ttot = 0, ttrial [100] ;
                 for (int trial = 0 ; trial < ntrials ; trial++)
                 {
-                    LAGRAPH_TRY (LAGraph_Tic (tic, NULL)) ;
+                    LAGraph_TRY (LAGraph_Tic (tic, NULL)) ;
                     presort = sorting ;
 
-                    LAGRAPH_TRY(
-                        LAGr_TriangleCount (&nt2, G, method,
+                    LAGraph_TRY(
+                        LAGraph_TriangleCount_Methods(&nt2, G, method,
                                                       &presort, msg) );
 
-                    LAGRAPH_TRY (LAGraph_Toc (&ttrial [trial], tic, NULL)) ;
+                    LAGraph_TRY (LAGraph_Toc (&ttrial [trial], tic, NULL)) ;
                     ttot += ttrial [trial] ;
                     printf ("trial %2d: %12.6f sec rate %6.2f  # triangles: "
                         "%g\n", trial, ttrial [trial],
@@ -252,8 +248,8 @@ int main (int argc, char **argv)
     print_method (stdout, method_best, sorting_best) ;
     printf ("nthreads: %3d time: %12.6f rate: %6.2f\n",
         nthreads_best, t_best, 1e-6 * nvals / t_best) ;
-    LG_FREE_ALL ;
-    LAGRAPH_TRY (LAGraph_Finalize (msg)) ;
-    return (GrB_SUCCESS) ;
+    LAGraph_FREE_ALL ;
+    LAGraph_TRY (LAGraph_Finalize (msg)) ;
+    return (0) ;
 }
 

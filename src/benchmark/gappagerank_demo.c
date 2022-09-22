@@ -1,16 +1,13 @@
 //------------------------------------------------------------------------------
-// LAGraph/src/benchmark/gappagerank_demo.c: benchmark GAP PageRank
+// test_gappagerank: read in (or create) a matrix and test the GAP PageRank
 //------------------------------------------------------------------------------
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University, and Gabor Szarnyas,
-// BME
 
 //------------------------------------------------------------------------------
+
+// Contributed by Tim Davis, Texas A&M and Gabor Szarnyas, BME
 
 #include "LAGraph_demo.h"
 
@@ -21,7 +18,7 @@
 // #define NTHREAD_LIST 6
 // #define THREAD_LIST 64, 32, 24, 12, 8, 4
 
-#define LG_FREE_ALL                             \
+#define LAGraph_FREE_ALL                        \
 {                                               \
     GrB_free (&A) ;                             \
     GrB_free (&Abool) ;                         \
@@ -29,6 +26,39 @@
     LAGraph_Delete (&G, msg) ;                  \
     if (f != NULL) fclose (f) ;                 \
 }
+
+#define SAVE_STATS(call_instruction, op_name, bytes_per_flop, iterations, matrix)    \
+GrB_Index nvals = 0;                                                                 \
+GrB_Matrix_nvals(&nvals, matrix);                                                    \
+/*printf("matrix has %ld\n edges", nvals);*/                                         \
+double t1 = omp_get_wtime();                                                         \
+call_instruction;                                                                    \
+double t2 = omp_get_wtime();                                                         \
+double time = (t2 - t1)*1000;                                                        \
+double perf = nvals * 2.0 / ((t2 - t1)*1e9);                                         \
+double bw = nvals * bytes_per_flop/((t2 - t1)*1e9);                                  \
+/*printf("edges: %lf\n", nvals);*/                                                   \
+printf("%s time %lf (ms)\n", op_name, (t2-t1)*1000);                             \
+/*printf("%s perf %lf (GFLop/s)\n", op_name, perf);*/                                \
+/*printf("%s BW %lf (GB/s)\n", op_name, bw);*/                                       \
+FILE *f;                                                                             \
+f = fopen("perf_stats.txt", "a");                                                    \
+fprintf(f, "%s %lf (ms) %lf (GFLOP/s) %lf (GB/s) %ld\n", op_name, time, perf, bw, nvals);\
+fclose(f);                                                                           \
+
+#define SAVE_TEPS(call_instruction, op_name, iterations, matrix)                        \
+GrB_Index my_nvals = 0;                                                                 \
+GrB_Matrix_nvals(&my_nvals, matrix);                                                    \
+double my_t1 = omp_get_wtime();                                                         \
+call_instruction;                                                                       \
+double my_t2 = omp_get_wtime();                                                         \
+double my_time = (my_t2 - my_t1)*1000;                                                  \
+double my_perf = iterations*(my_nvals / ((my_t2 - my_t1)*1e6));                         \
+double my_bw = 0;                                                                       \
+FILE *my_f;                                                                             \
+my_f = fopen("perf_stats.txt", "a");                                                    \
+fprintf(my_f, "%s %lf (ms) %lf (MTEPS/s) %lf (GB/s) %ld\n", op_name, my_time, my_perf, my_bw, my_nvals);\
+fclose(my_f);                                                                           \
 
 int main (int argc, char **argv)
 {
@@ -49,7 +79,7 @@ int main (int argc, char **argv)
     int nt = NTHREAD_LIST ;
     int Nthreads [20] = { 0, THREAD_LIST } ;
     int nthreads_max ;
-    LAGRAPH_TRY (LAGraph_GetNumThreads (&nthreads_max, NULL)) ;
+    LAGraph_TRY (LAGraph_GetNumThreads (&nthreads_max, NULL)) ;
     if (Nthreads [1] == 0)
     {
         // create thread list automatically
@@ -76,23 +106,20 @@ int main (int argc, char **argv)
     //--------------------------------------------------------------------------
 
     char *matrix_name = (argc > 1) ? argv [1] : "stdin" ;
-    LAGRAPH_TRY (readproblem (&G, NULL,
-        false, false, true, NULL, false, argc, argv)) ;
+    double t1_mes = omp_get_wtime();
+    if (readproblem (&G, NULL,
+        false, false, true, NULL, false, argc, argv) != 0) ERROR ;
+    double t2_mes = omp_get_wtime();
+    save_time_in_sec("whole_preprocess", t2_mes - t1_mes);
     GrB_Index n, nvals ;
-    GRB_TRY (GrB_Matrix_nrows (&n, G->A)) ;
-    GRB_TRY (GrB_Matrix_nvals (&nvals, G->A)) ;
+    GrB_TRY (GrB_Matrix_nrows (&n, G->A)) ;
+    GrB_TRY (GrB_Matrix_nvals (&nvals, G->A)) ;
 
     // determine the row degree property
-    LAGRAPH_TRY (LAGraph_Property_RowDegree (G, msg)) ;
-
-    // check # of sinks:
-    GrB_Index nsinks ;
-    GRB_TRY (GrB_Vector_nvals (&nvals, G->rowdegree)) ;
-    nsinks = n - nvals ;
-    printf ("nsinks: %" PRIu64 "\n", nsinks) ;
+    LAGraph_TRY (LAGraph_Property_RowDegree (G, msg)) ;
 
     //--------------------------------------------------------------------------
-    // compute the GAP pagerank
+    // compute the pagerank
     //--------------------------------------------------------------------------
 
     // the GAP benchmark requires 16 trials
@@ -108,7 +135,7 @@ int main (int argc, char **argv)
     {
         int nthreads = Nthreads [kk] ;
         if (nthreads > nthreads_max) continue ;
-        LAGRAPH_TRY (LAGraph_SetNumThreads (nthreads, msg)) ;
+        LAGraph_TRY (LAGraph_SetNumThreads (nthreads, msg)) ;
         printf ("\n--------------------------- nthreads: %2d\n", nthreads) ;
 
         double total_time = 0 ;
@@ -116,72 +143,40 @@ int main (int argc, char **argv)
         for (int trial = 0 ; trial < ntrials ; trial++)
         {
             GrB_free (&PR) ;
-            LAGRAPH_TRY (LAGraph_Tic (tic, NULL)) ;
-            LAGRAPH_TRY (LAGr_PageRankGAP (&PR, &iters, G,
-                damping, tol, itermax, msg)) ;
+            LAGraph_TRY (LAGraph_Tic (tic, NULL)) ;
+            t1_mes = omp_get_wtime();
+            LAGraph_TRY (LAGraph_VertexCentrality_PageRankGAP (&PR, G,
+                damping, tol, itermax, &iters, msg));
+            GrB_Index mes_nvals = 0; 
+            GrB_Matrix_nvals(&mes_nvals, G->AT);  
+            t2_mes = omp_get_wtime();
+            save_teps("page_rank", t2_mes - t1_mes, mes_nvals, iters);
             double t1 ;
-            LAGRAPH_TRY (LAGraph_Toc (&t1, tic, NULL)) ;
+            LAGraph_TRY (LAGraph_Toc (&t1, tic, NULL)) ;
             printf ("trial: %2d time: %10.4f sec\n", trial, t1) ;
             total_time += t1 ;
         }
 
-        float rsum ;
-        GRB_TRY (GrB_reduce (&rsum, NULL, GrB_PLUS_MONOID_FP32, PR, NULL)) ;
-
         double t = total_time / ntrials ;
-        printf ("GAP: %3d: avg time: %10.3f (sec), "
-                "rate: %10.3f iters: %d rsum: %e\n", nthreads,
-                t, 1e-6*((double) nvals) * iters / t, iters, rsum) ;
-        fprintf (stderr, "GAP: Avg: PR %3d: %10.3f sec: %s rsum: %e\n",
-             nthreads, t, matrix_name, rsum) ;
+        printf ("3f:%3d: avg time: %10.3f (sec), "
+                "rate: %10.3f iters: %d\n", nthreads,
+                t, 1e-6*((double) nvals) * iters / t, iters) ;
+        fprintf (stderr, "Avg: PR (3f)      %3d: %10.3f sec: %s\n",
+             nthreads, t, matrix_name) ;
 
     }
 
     //--------------------------------------------------------------------------
-    // compute the standard pagerank
+    // check result
     //--------------------------------------------------------------------------
 
-    // the STD pagerank may be slower than the GAP-style pagerank, because it
-    // must do extra work to handle sinks.  sum(PR) will always equal 1.
-
-    for (int kk = 1 ; kk <= nt ; kk++)
-    {
-        int nthreads = Nthreads [kk] ;
-        if (nthreads > nthreads_max) continue ;
-        LAGRAPH_TRY (LAGraph_SetNumThreads (nthreads, msg)) ;
-        printf ("\n--------------------------- nthreads: %2d\n", nthreads) ;
-
-        double total_time = 0 ;
-
-        for (int trial = 0 ; trial < ntrials ; trial++)
-        {
-            GrB_free (&PR) ;
-            LAGRAPH_TRY (LAGraph_Tic (tic, NULL)) ;
-            LAGRAPH_TRY (LAGr_PageRank (&PR, &iters, G,
-                damping, tol, itermax, msg)) ;
-            double t1 ;
-            LAGRAPH_TRY (LAGraph_Toc (&t1, tic, NULL)) ;
-            printf ("trial: %2d time: %10.4f sec\n", trial, t1) ;
-            total_time += t1 ;
-        }
-
-        float rsum ;
-        GRB_TRY (GrB_reduce (&rsum, NULL, GrB_PLUS_MONOID_FP32, PR, NULL)) ;
-
-        double t = total_time / ntrials ;
-        printf ("STD: %3d: avg time: %10.3f (sec), "
-                "rate: %10.3f iters: %d rsum: %e\n", nthreads,
-                t, 1e-6*((double) nvals) * iters / t, iters, rsum) ;
-        fprintf (stderr, "STD: Avg: PR %3d: %10.3f sec: %s rsum: %e\n",
-             nthreads, t, matrix_name, rsum) ;
-
-    }
+    // TODO: check result from PageRank
 
     //--------------------------------------------------------------------------
     // free all workspace and finish
     //--------------------------------------------------------------------------
 
-    LG_FREE_ALL ;
-    LAGRAPH_TRY (LAGraph_Finalize (msg)) ;
-    return (GrB_SUCCESS) ;
+    LAGraph_FREE_ALL ;
+    LAGraph_TRY (LAGraph_Finalize (msg)) ;
+    return (0) ;
 }

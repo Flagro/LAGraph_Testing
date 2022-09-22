@@ -4,19 +4,17 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University
 
 //------------------------------------------------------------------------------
+
+// Contributed by Tim Davis, Texas A&M University
 
 // usage:
 // mtx2bin infile.mtx outfile.grb
 
 #include "LAGraph_demo.h"
 
-#define LG_FREE_ALL                 \
+#define LAGraph_FREE_ALL            \
 {                                   \
     GrB_free (&A) ;                 \
 }
@@ -25,6 +23,7 @@ int main (int argc, char **argv)
 {
     GrB_Info info ;
     GrB_Matrix A = NULL ;
+    GrB_Type atype = NULL ;
     char msg [LAGRAPH_MSG_LEN] ;
 
     if (argc < 3)
@@ -45,7 +44,7 @@ int main (int argc, char **argv)
     //--------------------------------------------------------------------------
 
     double tic [2] ;
-    LAGRAPH_TRY (LAGraph_Tic (tic, msg)) ;
+    LAGraph_TRY (LAGraph_Tic (tic, msg)) ;
 
     // read in the file in Matrix Market format from the input file
     FILE *f = fopen (argv [1], "r") ;
@@ -54,20 +53,20 @@ int main (int argc, char **argv)
         printf ("Matrix file not found: [%s]\n", argv [1]) ;
         exit (1) ;
     }
-    LAGRAPH_TRY (LAGraph_MMRead (&A, f, msg)) ;
+    LAGraph_TRY (LAGraph_MMRead (&A, &atype, f, msg)) ;
     fclose (f) ;
 
-    GRB_TRY (GrB_wait (A, GrB_MATERIALIZE)) ;
+    LAGraph_TRY (LAGraph_Matrix_wait (A, msg)) ;
 
     double t_read ;
-    LAGRAPH_TRY (LAGraph_Toc (&t_read, tic, msg)) ;
+    LAGraph_TRY (LAGraph_Toc (&t_read, tic, msg)) ;
     printf ("read time: %g sec\n", t_read) ;
 
     //--------------------------------------------------------------------------
     // write to output file
     //--------------------------------------------------------------------------
 
-    LAGRAPH_TRY (LAGraph_Tic (tic, msg)) ;
+    LAGraph_TRY (LAGraph_Tic (tic, msg)) ;
     f = fopen (argv [2], "w") ;
     if (f == NULL)
     {
@@ -80,10 +79,10 @@ int main (int argc, char **argv)
         exit (1) ;
     }
     double t_binwrite ;
-    LAGRAPH_TRY (LAGraph_Toc (&t_binwrite, tic, msg)) ;
+    LAGraph_TRY (LAGraph_Toc (&t_binwrite, tic, msg)) ;
     printf ("binary write time: %g sec\n", t_binwrite) ;
 
-    LG_FREE_ALL ;
-    return (GrB_SUCCESS) ;
+    LAGraph_FREE_ALL ;
+    return (0) ;
 }
 

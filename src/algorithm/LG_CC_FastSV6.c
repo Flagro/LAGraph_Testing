@@ -4,16 +4,8 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Yongzhe Zhang, modified by Timothy A. Davis, Texas A&M
-// University
 
 //------------------------------------------------------------------------------
-
-// This is an Advanced algorithm (G->structure_is_symmetric must be known),
-// but it is not user-callable (see LAGr_ConnectedComponents instead).
 
 // Code is based on the algorithm described in the following paper:
 // Zhang, Azad, Hu. FastSV: A Distributed-Memory Connected Component
@@ -36,17 +28,20 @@
 // OK, and are ignored.  The values and type of A are ignored; just its
 // structure is accessed.
 
-// NOTE: This function must not be called by multiple user threads at the same
+// TODO: This function must not be called by multiple user threads at the same
 // time on the same graph G, since it unpacks G->A and then packs it back when
 // done.  G->A is unchanged when the function returns, but during execution
-// G->A is empty.  This will be fixed once the todos are finished below, and
+// G->A is empty.  This will be fixed once the TODOs are finished below, and
 // G->A will then become a truly read-only object (assuming GrB_wait (G->A)
 // has been done first).
 
-#define LG_FREE_ALL ;
+#define LAGraph_FREE_ALL ;
 #include "LG_internal.h"
 
-#if LAGRAPH_SUITESPARSE
+#if !LG_VANILLA
+#if (! LG_SUITESPARSE )
+#error "SuiteSparse:GraphBLAS v6.0.1 or later required"
+#endif
 
 //==============================================================================
 // fastsv: find the components of a graph
@@ -71,7 +66,7 @@ static inline GrB_Info fastsv
 )
 {
     GrB_Index n ;
-    GRB_TRY (GrB_Vector_size (&n, parent)) ;
+    GrB_TRY (GrB_Vector_size (&n, parent)) ;
     GrB_Index Cp_size = (n+1) * sizeof (GrB_Index) ;
     GrB_Index Ci_size = n * sizeof (GrB_Index) ;
     GrB_Index Cx_size = sizeof (bool) ;
@@ -85,7 +80,7 @@ static inline GrB_Info fastsv
         //----------------------------------------------------------------------
 
         // mngp = min (mngp, A*gp) using the MIN_SECOND semiring
-        GRB_TRY (GrB_mxv (mngp, NULL, min, min_2nd, A, *gp, NULL)) ;
+        GrB_TRY (GrB_mxv (mngp, NULL, min, min_2nd, A, *gp, NULL)) ;
 
         //----------------------------------------------------------------------
         // parent = min (parent, C*mngp) where C(i,j) is present if i=Px(j)
@@ -117,36 +112,36 @@ static inline GrB_Info fastsv
         // equal to false.
 
         // pack Cp, Px, and Cx into a matrix C with C(i,j) present if Px(j) == i
-        GRB_TRY (GxB_Matrix_pack_CSC (C, Cp, /* Px is Ci: */ Px, Cx,
+        GrB_TRY (GxB_Matrix_pack_CSC (C, Cp, /* Px is Ci: */ Px, Cx,
             Cp_size, Ci_size, Cx_size, iso, jumbled, NULL)) ;
 
         // parent = min (parent, C*mngp) using the MIN_SECOND semiring
-        GRB_TRY (GrB_mxv (parent, NULL, min, min_2nd, C, mngp, NULL)) ;
+        GrB_TRY (GrB_mxv (parent, NULL, min, min_2nd, C, mngp, NULL)) ;
 
         // unpack the contents of C, to make Px available to this method again.
-        GRB_TRY (GxB_Matrix_unpack_CSC (C, Cp, Px, Cx,
+        GrB_TRY (GxB_Matrix_unpack_CSC (C, Cp, Px, Cx,
             &Cp_size, &Ci_size, &Cx_size, &iso, &jumbled, NULL)) ;
 
         //----------------------------------------------------------------------
         // parent = min (parent, mngp, gp)
         //----------------------------------------------------------------------
 
-        GRB_TRY (GrB_eWiseAdd (parent, NULL, min, min, mngp, *gp, NULL)) ;
+        GrB_TRY (GrB_eWiseAdd (parent, NULL, min, min, mngp, *gp, NULL)) ;
 
         //----------------------------------------------------------------------
         // calculate grandparent: gp_new = parent (parent), and extract Px
         //----------------------------------------------------------------------
 
         // if parent is uint32, GraphBLAS typecasts to uint64 for Px.
-        GRB_TRY (GrB_Vector_extractTuples (NULL, *Px, &n, parent)) ;
-        GRB_TRY (GrB_extract (*gp_new, NULL, NULL, parent, *Px, n, NULL)) ;
+        GrB_TRY (GrB_Vector_extractTuples (NULL, *Px, &n, parent)) ;
+        GrB_TRY (GrB_extract (*gp_new, NULL, NULL, parent, *Px, n, NULL)) ;
 
         //----------------------------------------------------------------------
         // terminate if gp and gp_new are the same
         //----------------------------------------------------------------------
 
-        GRB_TRY (GrB_eWiseMult (t, NULL, NULL, eq, *gp_new, *gp, NULL)) ;
-        GRB_TRY (GrB_reduce (&done, NULL, GrB_LAND_MONOID_BOOL, t, NULL)) ;
+        GrB_TRY (GrB_eWiseMult (t, NULL, NULL, eq, *gp_new, *gp, NULL)) ;
+        GrB_TRY (GrB_reduce (&done, NULL, GrB_LAND_MONOID_BOOL, t, NULL)) ;
         if (done) break ;
 
         // swap gp and gp_new
@@ -164,49 +159,49 @@ static inline GrB_Info fastsv
 // is a representative, then component(r)=r.  The number of connected
 // components in the graph G is the number of representatives.
 
-#undef  LG_FREE_WORK
-#define LG_FREE_WORK                            \
-{                                               \
-    LAGraph_Free ((void **) &Tp, NULL) ;        \
-    LAGraph_Free ((void **) &Tj, NULL) ;        \
-    LAGraph_Free ((void **) &Tx, NULL) ;        \
-    LAGraph_Free ((void **) &Cp, NULL) ;        \
-    LAGraph_Free ((void **) &Px, NULL) ;        \
-    LAGraph_Free ((void **) &Cx, NULL) ;        \
-    LAGraph_Free ((void **) &ht_key, NULL) ;    \
-    LAGraph_Free ((void **) &ht_count, NULL) ;  \
-    LAGraph_Free ((void **) &count, NULL) ;     \
-    LAGraph_Free ((void **) &range, NULL) ;     \
-    GrB_free (&C) ;                             \
-    GrB_free (&T) ;                             \
-    GrB_free (&t) ;                             \
-    GrB_free (&y) ;                             \
-    GrB_free (&gp) ;                            \
-    GrB_free (&mngp) ;                          \
-    GrB_free (&gp_new) ;                        \
+#undef  LAGraph_FREE_WORK
+#define LAGraph_FREE_WORK                   \
+{                                           \
+    LAGraph_Free ((void **) &Tp) ;          \
+    LAGraph_Free ((void **) &Tj) ;          \
+    LAGraph_Free ((void **) &Tx) ;          \
+    LAGraph_Free ((void **) &Cp) ;          \
+    LAGraph_Free ((void **) &Px) ;          \
+    LAGraph_Free ((void **) &Cx) ;          \
+    LAGraph_Free ((void **) &ht_key) ;      \
+    LAGraph_Free ((void **) &ht_count) ;    \
+    LAGraph_Free ((void **) &count) ;       \
+    LAGraph_Free ((void **) &range) ;       \
+    GrB_free (&C) ;                         \
+    GrB_free (&T) ;                         \
+    GrB_free (&t) ;                         \
+    GrB_free (&y) ;                         \
+    GrB_free (&gp) ;                        \
+    GrB_free (&mngp) ;                      \
+    GrB_free (&gp_new) ;                    \
 }
 
-#undef  LG_FREE_ALL
-#define LG_FREE_ALL                             \
-{                                               \
-    LG_FREE_WORK ;                              \
-    GrB_free (&parent) ;                        \
+#undef  LAGraph_FREE_ALL
+#define LAGraph_FREE_ALL                    \
+{                                           \
+    LAGraph_FREE_WORK ;                     \
+    GrB_free (&parent) ;                    \
 }
 
 #endif
 
 int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
 (
-    // output:
+    // output
     GrB_Vector *component,  // component(i)=r if node is in the component r
-    // input:
-    LAGraph_Graph G,        // input graph (modified then restored)
+    // inputs
+    LAGraph_Graph G,        // input graph
     char *msg
 )
 {
 
-#if !LAGRAPH_SUITESPARSE
-    LG_ASSERT (false, GrB_NOT_IMPLEMENTED) ;
+#if LG_VANILLA
+    LG_CHECK (0, GrB_NOT_IMPLEMENTED, "SuiteSparse required for this method") ;
 #else
 
     //--------------------------------------------------------------------------
@@ -224,22 +219,30 @@ int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
     void *Tx = NULL, *Cx = NULL ;
     int *ht_count = NULL ;
 
-    LG_TRY (LAGraph_CheckGraph (G, msg)) ;
-    LG_ASSERT (component != NULL, GrB_NULL_POINTER) ;
+    LG_CHECK (LAGraph_CheckGraph (G, msg), GrB_INVALID_OBJECT,
+        "graph is invalid") ;
+    LG_CHECK (component == NULL, GrB_NULL_POINTER, "component is NULL") ;
 
-    LG_ASSERT_MSG ((G->kind == LAGraph_ADJACENCY_UNDIRECTED ||
-       (G->kind == LAGraph_ADJACENCY_DIRECTED &&
-        G->structure_is_symmetric == LAGraph_TRUE)),
-        LAGRAPH_SYMMETRIC_STRUCTURE_REQUIRED,
-        "G->A must be known to be symmetric") ;
+    if (G->kind == LAGRAPH_ADJACENCY_UNDIRECTED ||
+       (G->kind == LAGRAPH_ADJACENCY_DIRECTED &&
+        G->A_structure_is_symmetric == LAGRAPH_TRUE))
+    {
+        // A must be symmetric
+        ;
+    }
+    else
+    {
+        // A must not be unsymmetric
+        LG_CHECK (false, GrB_INVALID_VALUE, "input must be symmetric") ;
+    }
 
     //--------------------------------------------------------------------------
     // initializations
     //--------------------------------------------------------------------------
 
     GrB_Matrix A = G->A ;
-    GRB_TRY (GrB_Matrix_nrows (&n, A)) ;
-    GRB_TRY (GrB_Matrix_nvals (&nvals, A)) ;
+    GrB_TRY (GrB_Matrix_nrows (&n, A)) ;
+    GrB_TRY (GrB_Matrix_nvals (&nvals, A)) ;
 
     // determine the integer type, operators, and semirings to use 
     GrB_Type Uint, Int ;
@@ -284,25 +287,26 @@ int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
     #define FASTSV_SAMPLES 4
     bool sampling = (nvals > n * FASTSV_SAMPLES * 2 && n > 1024) ;
 
-// [ todo: nthreads will not be needed once GxB_select with a GxB_RankUnaryOp
+// [ TODO: nthreads will not be needed once GxB_select with a GxB_RankUnaryOp
 // and a new GxB_extract are added to SuiteSparse:GraphBLAS.
     // determine # of threads to use
     int nthreads ;
-    LG_TRY (LAGraph_GetNumThreads (&nthreads, NULL)) ;
-    nthreads = LAGRAPH_MIN (nthreads, n / 16) ;
-    nthreads = LAGRAPH_MAX (nthreads, 1) ;
+    LAGraph_TRY (LAGraph_GetNumThreads (&nthreads, NULL)) ;
+    nthreads = LAGraph_MIN (nthreads, n / 16) ;
+    nthreads = LAGraph_MAX (nthreads, 1) ;
 // ]
 
-    LG_TRY (LAGraph_Calloc ((void **) &Cx, 1, sizeof (bool), msg)) ;
-    LG_TRY (LAGraph_Malloc ((void **) &Px, n, sizeof (GrB_Index), msg)) ;
+    Cx = (void *) LAGraph_Calloc (1, sizeof (bool)) ;
+    Px = (GrB_Index *) LAGraph_Malloc (n, sizeof (GrB_Index)) ;
+    LG_CHECK (Px == NULL || Cx == NULL, GrB_OUT_OF_MEMORY, "out of memory") ;
 
     // create Cp = 0:n (always 64-bit) and the empty C matrix
-    GRB_TRY (GrB_Matrix_new (&C, GrB_BOOL, n, n)) ;
-    GRB_TRY (GrB_Vector_new (&t, GrB_INT64, n+1)) ;
-    GRB_TRY (GrB_assign (t, NULL, NULL, 0, GrB_ALL, n+1, NULL)) ;
-    GRB_TRY (GrB_apply (t, NULL, NULL, GrB_ROWINDEX_INT64, t, 0, NULL)) ;
-    GRB_TRY (GxB_Vector_unpack_Full (t, (void **) &Cp, &Cp_size, NULL, NULL)) ;
-    GRB_TRY (GrB_free (&t)) ;
+    GrB_TRY (GrB_Matrix_new (&C, GrB_BOOL, n, n)) ;
+    GrB_TRY (GrB_Vector_new (&t, GrB_INT64, n+1)) ;
+    GrB_TRY (GrB_assign (t, NULL, NULL, 0, GrB_ALL, n+1, NULL)) ;
+    GrB_TRY (GrB_apply (t, NULL, NULL, GrB_ROWINDEX_INT64, t, 0, NULL)) ;
+    GrB_TRY (GxB_Vector_unpack_Full (t, (void **) &Cp, &Cp_size, NULL, NULL)) ;
+    GrB_TRY (GrB_free (&t)) ;
 
     //--------------------------------------------------------------------------
     // warmup: parent = min (0:n-1, A*1) using the MIN_SECONDI semiring
@@ -314,30 +318,30 @@ int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
     // is the minimum index j, so only the first entry in A(i,:) needs to be
     // considered for each row i.
 
-    GRB_TRY (GrB_Vector_new (&t, Int, n)) ;
-    GRB_TRY (GrB_Vector_new (&y, Int, n)) ;
-    GRB_TRY (GrB_assign (t, NULL, NULL, 0, GrB_ALL, n, NULL)) ;
-    GRB_TRY (GrB_assign (y, NULL, NULL, 0, GrB_ALL, n, NULL)) ;
-    GRB_TRY (GrB_apply (y, NULL, NULL, ramp, y, 0, NULL)) ;
-    GRB_TRY (GrB_mxv (y, NULL, imin, min_2ndi, A, t, NULL)) ;
-    GRB_TRY (GrB_free (&t)) ;
+    GrB_TRY (GrB_Vector_new (&t, Int, n)) ;
+    GrB_TRY (GrB_Vector_new (&y, Int, n)) ;
+    GrB_TRY (GrB_assign (t, NULL, NULL, 0, GrB_ALL, n, NULL)) ;
+    GrB_TRY (GrB_assign (y, NULL, NULL, 0, GrB_ALL, n, NULL)) ;
+    GrB_TRY (GrB_apply (y, NULL, NULL, ramp, y, 0, NULL)) ;
+    GrB_TRY (GrB_mxv (y, NULL, imin, min_2ndi, A, t, NULL)) ;
+    GrB_TRY (GrB_free (&t)) ;
 
     // The typecast from Int to Uint is required because the ROWINDEX operator
     // and MIN_SECONDI do not work in the UINT* domains, as built-in operators.
     // parent = (Uint) y
-    GRB_TRY (GrB_Vector_new (&parent, Uint, n)) ;
-    GRB_TRY (GrB_assign (parent, NULL, NULL, y, GrB_ALL, n, NULL)) ;
-    GRB_TRY (GrB_free (&y)) ;
+    GrB_TRY (GrB_Vector_new (&parent, Uint, n)) ;
+    GrB_TRY (GrB_assign (parent, NULL, NULL, y, GrB_ALL, n, NULL)) ;
+    GrB_TRY (GrB_free (&y)) ;
 
     // copy parent into gp, mngp, and Px.  Px is a non-opaque 64-bit copy of the
     // parent GrB_Vector.  The Px array is always of type GrB_Index since it
     // must be used as the input array for extractTuples and as Ci for pack_CSR.
     // If parent is uint32, GraphBLAS typecasts it to the uint64 Px array.
-    GRB_TRY (GrB_Vector_extractTuples (NULL, Px, &n, parent)) ;
-    GRB_TRY (GrB_Vector_dup (&gp, parent)) ;
-    GRB_TRY (GrB_Vector_dup (&mngp, parent)) ;
-    GRB_TRY (GrB_Vector_new (&gp_new, Uint, n)) ;
-    GRB_TRY (GrB_Vector_new (&t, GrB_BOOL, n)) ;
+    GrB_TRY (GrB_Vector_extractTuples (NULL, Px, &n, parent)) ;
+    GrB_TRY (GrB_Vector_dup (&gp, parent)) ;
+    GrB_TRY (GrB_Vector_dup (&mngp, parent)) ;
+    GrB_TRY (GrB_Vector_new (&gp_new, Uint, n)) ;
+    GrB_TRY (GrB_Vector_new (&t, GrB_BOOL, n)) ;
 
     //--------------------------------------------------------------------------
     // sample phase
@@ -346,7 +350,7 @@ int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
     if (sampling)
     {
 
-// [ todo: GxB_select, using a new operator: GxB_RankUnaryOp, will do all this,
+// [ TODO: GxB_select, using a new operator: GxB_RankUnaryOp, will do all this,
 // with GxB_Matrix_select_RankOp_Scalar with operator GxB_LEASTRANK and a
 // GrB_Scalar input equal to FASTSV_SAMPLES.  Built-in operators will be,
 // (where y is INT64):
@@ -379,7 +383,7 @@ int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
         void *Ax ;
         GrB_Index *Ap, *Aj, Ap_size, Aj_size, Ax_size ;
         bool A_jumbled, A_iso ;
-        GRB_TRY (GxB_Matrix_unpack_CSR (A, &Ap, &Aj, &Ax,
+        GrB_TRY (GxB_Matrix_unpack_CSR (A, &Ap, &Aj, &Ax,
             &Ap_size, &Aj_size, &Ax_size, &A_iso, &A_jumbled, NULL)) ;
 
         //----------------------------------------------------------------------
@@ -389,11 +393,13 @@ int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
         GrB_Index Tp_size = (n+1) * sizeof (GrB_Index) ;
         GrB_Index Tj_size = nvals * sizeof (GrB_Index) ;
         GrB_Index Tx_size = sizeof (bool) ;
-        LG_TRY (LAGraph_Malloc ((void **) &Tp, n+1, sizeof (GrB_Index), msg)) ;
-        LG_TRY (LAGraph_Malloc ((void **) &Tj, nvals, sizeof (GrB_Index), msg)) ;
-        LG_TRY (LAGraph_Calloc ((void **) &Tx, 1, sizeof (bool), msg)) ;
-        LG_TRY (LAGraph_Malloc ((void **) &range, nthreads + 1, sizeof (int64_t), msg)) ;
-        LG_TRY (LAGraph_Calloc ((void **) &count, nthreads + 1, sizeof (GrB_Index), msg));
+        Tp = (GrB_Index *) LAGraph_Malloc (n+1, sizeof (GrB_Index)) ;
+        Tj = (GrB_Index *) LAGraph_Malloc (nvals, sizeof (GrB_Index)) ;
+        Tx = (bool *) LAGraph_Calloc (1, sizeof (bool)) ;
+        range = (int64_t *) LAGraph_Malloc (nthreads + 1, sizeof (int64_t)) ;
+        count = (GrB_Index *) LAGraph_Calloc (nthreads + 1, sizeof (GrB_Index));
+        LG_CHECK (Tp == NULL || Tj == NULL || Tx == NULL || range == NULL
+            || count == NULL, GrB_OUT_OF_MEMORY, "out of memory") ;
 
         //----------------------------------------------------------------------
         // define parallel tasks to construct T
@@ -415,7 +421,7 @@ int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
             for (int64_t i = range [tid] ; i < range [tid+1] ; i++)
             {
                 int64_t deg = Ap [i + 1] - Ap [i] ;
-                count [tid + 1] += LAGRAPH_MIN (FASTSV_SAMPLES, deg) ;
+                count [tid + 1] += LAGraph_MIN (FASTSV_SAMPLES, deg) ;
             }
         }
 
@@ -455,17 +461,17 @@ int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
         // import the result into the GrB_Matrix T
         //----------------------------------------------------------------------
 
-        GRB_TRY (GrB_Matrix_new (&T, GrB_BOOL, n, n)) ;
-        GRB_TRY (GxB_Matrix_pack_CSR (T, &Tp, &Tj, &Tx, Tp_size, Tj_size,
+        GrB_TRY (GrB_Matrix_new (&T, GrB_BOOL, n, n)) ;
+        GrB_TRY (GxB_Matrix_pack_CSR (T, &Tp, &Tj, &Tx, Tp_size, Tj_size,
             Tx_size, /* T is iso: */ true, A_jumbled, NULL)) ;
 
-// ] todo: the above will all be done as a single call to GxB_select.
+// ] TODO: the above will all be done as a single call to GxB_select.
 
         //----------------------------------------------------------------------
         // find the connected components of T
         //----------------------------------------------------------------------
 
-        GRB_TRY (fastsv (T, parent, mngp, &gp, &gp_new, t, eq, min, min_2nd,
+        GrB_TRY (fastsv (T, parent, mngp, &gp, &gp_new, t, eq, min, min_2nd,
             C, &Cp, &Px, &Cx, msg)) ;
 
         //----------------------------------------------------------------------
@@ -476,6 +482,8 @@ int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
         // vector, the contents of which are currently in the non-opaque Px
         // array.
 
+        // FIXME: brittle:  864, 1024
+
         // hash table size must be a power of 2
         #define HASH_SIZE 1024
         // number of samples to insert into the hash table
@@ -484,8 +492,10 @@ int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
         #define NEXT(x) ((x + 23) & (HASH_SIZE-1))
 
         // allocate and initialize the hash table
-        LG_TRY (LAGraph_Malloc ((void **) &ht_key, HASH_SIZE, sizeof (GrB_Index), msg)) ;
-        LG_TRY (LAGraph_Calloc ((void **) &ht_count, HASH_SIZE, sizeof (int), msg)) ;
+        ht_key = (GrB_Index *) LAGraph_Malloc (HASH_SIZE, sizeof (GrB_Index)) ;
+        ht_count = (int *) LAGraph_Calloc (HASH_SIZE, sizeof (int)) ;
+        LG_CHECK (ht_key == NULL || ht_count == NULL, GrB_OUT_OF_MEMORY,
+            "out of memory") ;
         for (int k = 0 ; k < HASH_SIZE ; k++)
         {
             ht_key [k] = UINT64_MAX ;
@@ -498,7 +508,7 @@ int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
         for (int64_t k = 0 ; k < HASH_SAMPLES ; k++)
         {
             // select an entry from Px at random
-            GrB_Index x = Px [LG_Random60 (&seed) % n] ;
+            GrB_Index x = Px [LAGraph_Random60 (&seed) % n] ;
             // find x in the hash table
             GrB_Index h = HASH (x) ;
             while (ht_key [h] != UINT64_MAX && ht_key [h] != x) h = NEXT (h) ;
@@ -525,7 +535,7 @@ int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
         //     j is in the key component.
         // (3) If A(i,:) has any deletions from (2), T(i,key) is added to T.
 
-// [ todo: replace this with GxB_extract with GrB_Vector index arrays.
+// [ TODO: replace this with GxB_extract with GrB_Vector index arrays.
 // See https://github.com/GraphBLAS/graphblas-api-c/issues/67 .
 // This method will not insert the new entries T(i,key) for rows i that have
 // had entries deleted.  That can be done with GrB_assign, with an n-by-1 mask
@@ -539,7 +549,7 @@ int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
 
         // unpack T to reuse the space (all content is overwritten below)
         bool T_jumbled, T_iso ;
-        GRB_TRY (GxB_Matrix_unpack_CSR (T, &Tp, &Tj, &Tx, &Tp_size, &Tj_size,
+        GrB_TRY (GxB_Matrix_unpack_CSR (T, &Tp, &Tj, &Tx, &Tp_size, &Tj_size,
             &Tx_size, &T_iso, &T_jumbled, NULL)) ;
 
         #pragma omp parallel for num_threads(nthreads) schedule(static)
@@ -611,11 +621,11 @@ int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
         Tp [n] = nvals ;
 
         // pack T for the final phase
-        GRB_TRY (GxB_Matrix_pack_CSR (T, &Tp, &Tj, &Tx, Tp_size, Tj_size,
+        GrB_TRY (GxB_Matrix_pack_CSR (T, &Tp, &Tj, &Tx, Tp_size, Tj_size,
             Tx_size, T_iso, /* T is now jumbled */ true, NULL)) ;
 
         // pack A (unchanged since last unpack); this is the original G->A.
-        GRB_TRY (GxB_Matrix_pack_CSR (A, &Ap, &Aj, &Ax, Ap_size, Aj_size,
+        GrB_TRY (GxB_Matrix_pack_CSR (A, &Ap, &Aj, &Ax, Ap_size, Aj_size,
             Ax_size, A_iso, A_jumbled, NULL)) ;
 
 // ].  The unpack/pack of A into Ap, Aj, Ax will not be needed, and G->A
@@ -635,7 +645,7 @@ int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
     if (nvals == 0)
     {
         (*component) = parent ;
-        LG_FREE_WORK ;
+        LAGraph_FREE_WORK ;
         return (GrB_SUCCESS) ;
     }
 
@@ -643,7 +653,7 @@ int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
     // final phase
     //--------------------------------------------------------------------------
 
-    GRB_TRY (fastsv (A, parent, mngp, &gp, &gp_new, t, eq, min, min_2nd,
+    GrB_TRY (fastsv (A, parent, mngp, &gp, &gp_new, t, eq, min, min_2nd,
         C, &Cp, &Px, &Cx, msg)) ;
 
     //--------------------------------------------------------------------------
@@ -651,7 +661,7 @@ int LG_CC_FastSV6           // SuiteSparse:GraphBLAS method, with GxB extensions
     //--------------------------------------------------------------------------
 
     (*component) = parent ;
-    LG_FREE_WORK ;
+    LAGraph_FREE_WORK ;
     return (GrB_SUCCESS) ;
 #endif
 }

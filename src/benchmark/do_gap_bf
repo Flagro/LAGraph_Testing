@@ -34,13 +34,8 @@ echo "Matrix input file format: " $KIND
 if [ -z "$2" ]; then GAP="../../../GAP" ; else GAP=$2 ; fi
 echo "GAP matrices located in:  " $GAP
 
+../../build/src/benchmark/gap_bellman_ford_demo $1
 
-#export OMP_NUM_THREADS=48
-#export OMP_PROC_BIND=close
-#export OMP_PLACES=cores
-
-
-../../build/src/benchmark/gappagerank_demo $1
 
 #../../build/src/benchmark/gappagerank_demo $GAP/GAP-kron/GAP-kron.$KIND
 #../../build/src/benchmark/gappagerank_demo $GAP/GAP-urand/GAP-urand.$KIND

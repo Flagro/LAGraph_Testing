@@ -1,21 +1,16 @@
 //------------------------------------------------------------------------------
-// LAGr_Betweenness: vertex betweenness-centrality
+// LAGraph_VertexCentrality_Betweenness: vertex betweenness-centrality
 //------------------------------------------------------------------------------
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
 // Contributed by Scott Kolodziej and Tim Davis, Texas A&M University;
 // Adapted and revised from GraphBLAS C API Spec, Appendix B.4.
 
 //------------------------------------------------------------------------------
 
-// LAGr_Betweenness: Batch algorithm for computing
+// LAGraph_VertexCentrality_Betweenness: Batch algorithm for computing
 // betweeness centrality, using push-pull optimization.
-
-// This is an Advanced algorithm (G->AT is required).
 
 // This method computes an approximation of the betweenness algorithm.
 //                               ____
@@ -47,9 +42,14 @@
 
 // Each phase uses push-pull direction optimization.
 
+// This is an LAGraph "expert" method, since it requires the source nodes to be
+// specified, and G->AT must be present (unless G is undirected or G->A is
+// known to have a symmetric structure, in which case G->A is used for both A
+// and AT).
+
 //------------------------------------------------------------------------------
 
-#define LG_FREE_WORK                            \
+#define LAGraph_FREE_WORK                       \
 {                                               \
     GrB_free (&frontier) ;                      \
     GrB_free (&paths) ;                         \
@@ -62,27 +62,41 @@
             if (S [i] == NULL) break ;          \
             GrB_free (&(S [i])) ;               \
         }                                       \
-        LAGraph_Free ((void **) &S, NULL) ;     \
+        LAGraph_Free ((void **) &S) ;           \
     }                                           \
 }
 
-#define LG_FREE_ALL                 \
+#define LAGraph_FREE_ALL            \
 {                                   \
-    LG_FREE_WORK ;                  \
+    LAGraph_FREE_WORK ;             \
     GrB_free (centrality) ;         \
 }
+
+#define SAVE_TIME(call_instruction, op_name)       \
+double my_t1 = omp_get_wtime();                                                         \
+call_instruction;                                                                       \
+double my_t2 = omp_get_wtime();                                                         \
+double my_time = (my_t2 - my_t1)*1000;                                                           \
+double my_perf = 0;                                        \
+double my_bw = 0;                                  \
+size_t my_nvals = 0;\
+FILE *my_f;                                                                          \
+my_f = fopen("perf_stats.txt", "a");                                                 \
+fprintf(my_f, "%s %lf (ms) %lf (GFLOP/s) %lf (GB/s) %ld\n", op_name, my_time, my_perf, my_bw, my_nvals);\
+fclose(my_f);\
+
 
 #include "LG_internal.h"
 
 //------------------------------------------------------------------------------
-// LAGr_Betweenness: vertex betweenness-centrality
+// LAGraph_VertexCentrality_Betweenness: vertex betweenness-centrality
 //------------------------------------------------------------------------------
 
-int LAGr_Betweenness
+int LAGraph_VertexCentrality_Betweenness    // vertex betweenness-centrality
 (
-    // output:
+    // outputs:
     GrB_Vector *centrality,     // centrality(i): betweeness centrality of i
-    // input:
+    // inputs:
     LAGraph_Graph G,            // input graph
     const GrB_Index *sources,   // source vertices to compute shortest paths
     int32_t ns,                 // number of source vertices
@@ -120,14 +134,15 @@ int LAGr_Betweenness
 
     GrB_Index n = 0 ;                   // # nodes in the graph
 
-    LG_ASSERT (centrality != NULL, GrB_NULL_POINTER) ;
+    LG_CHECK (centrality == NULL, -1, "centrality is NULL") ;
     (*centrality) = NULL ;
-    LG_TRY (LAGraph_CheckGraph (G, msg)) ;
+    LG_CHECK (LAGraph_CheckGraph (G, msg), -1, "graph is invalid") ;
+    LAGraph_Kind kind = G->kind ;
+    int A_sym_structure = G->A_structure_is_symmetric ;
 
     GrB_Matrix A = G->A ;
     GrB_Matrix AT ;
-    if (G->kind == LAGraph_ADJACENCY_UNDIRECTED ||
-        G->structure_is_symmetric == LAGraph_TRUE)
+    if (kind == LAGRAPH_ADJACENCY_UNDIRECTED || A_sym_structure == LAGRAPH_TRUE)
     {
         // A and A' have the same structure
         AT = A ;
@@ -136,8 +151,7 @@ int LAGr_Betweenness
     {
         // A and A' differ
         AT = G->AT ;
-        LG_ASSERT_MSG (AT != NULL,
-            LAGRAPH_PROPERTY_MISSING, "G->AT is required") ;
+        LG_CHECK (AT == NULL, -1, "G->AT is required") ;
     }
 
     // =========================================================================
@@ -145,29 +159,29 @@ int LAGr_Betweenness
     // =========================================================================
 
     // Initialize paths and frontier with source notes
-    GRB_TRY (GrB_Matrix_nrows (&n, A)) ;
-    GRB_TRY (GrB_Matrix_new (&paths,    GrB_FP64, ns, n)) ;
-    GRB_TRY (GrB_Matrix_new (&frontier, GrB_FP64, ns, n)) ;
-    #if LAGRAPH_SUITESPARSE
-    GRB_TRY (GxB_set (paths, GxB_SPARSITY_CONTROL, GxB_BITMAP + GxB_FULL)) ;
+    GrB_TRY (GrB_Matrix_nrows (&n, A)) ;
+    GrB_TRY (GrB_Matrix_new (&paths,    GrB_FP64, ns, n)) ;
+    GrB_TRY (GrB_Matrix_new (&frontier, GrB_FP64, ns, n)) ;
+    #if LG_SUITESPARSE
+    GrB_TRY (GxB_set (paths, GxB_SPARSITY_CONTROL, GxB_BITMAP + GxB_FULL)) ;
     #endif
     for (GrB_Index i = 0 ; i < ns ; i++)
     {
         // paths (i,s(i)) = 1
         // frontier (i,s(i)) = 1
         double one = 1 ;
-        GrB_Index src = sources [i] ;
-        LG_ASSERT_MSG (src < n, GrB_INVALID_INDEX, "invalid source node") ;
-        GRB_TRY (GrB_Matrix_setElement (paths,    one, i, src)) ;
-        GRB_TRY (GrB_Matrix_setElement (frontier, one, i, src)) ;
+        GrB_TRY (GrB_Matrix_setElement (paths,    one, i, sources [i])) ;
+        GrB_TRY (GrB_Matrix_setElement (frontier, one, i, sources [i])) ;
     }
 
     // Initial frontier: frontier<!paths>= frontier*A
-    GRB_TRY (GrB_mxm (frontier, paths, NULL, LAGraph_plus_first_fp64,
-        frontier, A, GrB_DESC_RSC)) ;
+    SAVE_TIME((
+    GrB_TRY (GrB_mxm (frontier, paths, NULL, LAGraph_plus_first_fp64,
+        frontier, A, GrB_DESC_RSC))), "BC_mxm");
 
     // Allocate memory for the array of S matrices
-    LG_TRY (LAGraph_Malloc ((void **) &S, n+1, sizeof (GrB_Matrix), msg)) ;
+    S = (GrB_Matrix *) LAGraph_Malloc (n+1, sizeof (GrB_Matrix)) ;
+    LG_CHECK (S == NULL, -1, "out of memory") ;
     S [0] = NULL ;
 
     // =========================================================================
@@ -176,7 +190,7 @@ int LAGr_Betweenness
 
     bool last_was_pull = false ;
     GrB_Index frontier_size, last_frontier_size = 0 ;
-    GRB_TRY (GrB_Matrix_nvals (&frontier_size, frontier)) ;
+    GrB_TRY (GrB_Matrix_nvals (&frontier_size, frontier)) ;
 
     int64_t depth ;
     for (depth = 0 ; frontier_size > 0 && depth < n ; depth++)
@@ -187,13 +201,13 @@ int LAGr_Betweenness
         //----------------------------------------------------------------------
 
         S [depth+1] = NULL ;
-        LG_TRY (LAGraph_Matrix_Structure (&(S [depth]), frontier, msg)) ;
+        LAGraph_TRY (LAGraph_Structure (&(S [depth]), frontier, msg)) ;
 
         //----------------------------------------------------------------------
         // Accumulate path counts: paths += frontier
         //----------------------------------------------------------------------
 
-        GRB_TRY (GrB_assign (paths, NULL, GrB_PLUS_FP64, frontier, GrB_ALL, ns,
+        GrB_TRY (GrB_assign (paths, NULL, GrB_PLUS_FP64, frontier, GrB_ALL, ns,
             GrB_ALL, n, NULL)) ;
 
         //----------------------------------------------------------------------
@@ -208,20 +222,20 @@ int LAGr_Betweenness
         if (do_pull)
         {
             // frontier<!paths> = frontier*AT'
-            #if LAGRAPH_SUITESPARSE
-            GRB_TRY (GxB_set (frontier, GxB_SPARSITY_CONTROL, GxB_BITMAP)) ;
+            #if LG_SUITESPARSE
+            GrB_TRY (GxB_set (frontier, GxB_SPARSITY_CONTROL, GxB_BITMAP)) ;
             #endif
-            GRB_TRY (GrB_mxm (frontier, paths, NULL, LAGraph_plus_first_fp64,
-                frontier, AT, GrB_DESC_RSCT1)) ;
+            SAVE_TIME((GrB_TRY (GrB_mxm (frontier, paths, NULL, LAGraph_plus_first_fp64,
+                frontier, AT, GrB_DESC_RSCT1))), "mxm_pull");
         }
         else // push
         {
             // frontier<!paths> = frontier*A
-            #if LAGRAPH_SUITESPARSE
-            GRB_TRY (GxB_set (frontier, GxB_SPARSITY_CONTROL, GxB_SPARSE)) ;
+            #if LG_SUITESPARSE
+            GrB_TRY (GxB_set (frontier, GxB_SPARSITY_CONTROL, GxB_SPARSE)) ;
             #endif
-            GRB_TRY (GrB_mxm (frontier, paths, NULL, LAGraph_plus_first_fp64,
-                frontier, A, GrB_DESC_RSC)) ;
+            SAVE_TIME((GrB_TRY (GrB_mxm (frontier, paths, NULL, LAGraph_plus_first_fp64,
+                frontier, A, GrB_DESC_RSC))), "mxm_push");
         }
 
         //----------------------------------------------------------------------
@@ -230,21 +244,21 @@ int LAGr_Betweenness
 
         last_frontier_size = frontier_size ;
         last_was_pull = do_pull ;
-        GRB_TRY (GrB_Matrix_nvals (&frontier_size, frontier)) ;
+        GrB_TRY (GrB_Matrix_nvals (&frontier_size, frontier)) ;
     }
 
-    GRB_TRY (GrB_free (&frontier)) ;
+    GrB_TRY (GrB_free (&frontier)) ;
 
     // =========================================================================
     // === Betweenness centrality computation phase ============================
     // =========================================================================
 
     // bc_update = ones (ns, n) ; a full matrix (and stays full)
-    GRB_TRY (GrB_Matrix_new (&bc_update, GrB_FP64, ns, n)) ;
-    GRB_TRY (GrB_assign (bc_update, NULL, NULL, 1, GrB_ALL, ns, GrB_ALL, n,
+    GrB_TRY (GrB_Matrix_new (&bc_update, GrB_FP64, ns, n)) ;
+    GrB_TRY (GrB_assign (bc_update, NULL, NULL, 1, GrB_ALL, ns, GrB_ALL, n,
         NULL)) ;
     // W: empty ns-by-n array, as workspace
-    GRB_TRY (GrB_Matrix_new (&W, GrB_FP64, ns, n)) ;
+    GrB_TRY (GrB_Matrix_new (&W, GrB_FP64, ns, n)) ;
 
     // Backtrack through the BFS and compute centrality updates for each vertex
     for (int64_t i = depth-1 ; i > 0 ; i--)
@@ -255,7 +269,7 @@ int LAGr_Betweenness
         //----------------------------------------------------------------------
 
         // Add contributions by successors and mask with that level's frontier
-        GRB_TRY (GrB_eWiseMult (W, S [i], NULL, GrB_DIV_FP64, bc_update, paths,
+        GrB_TRY (GrB_eWiseMult (W, S [i], NULL, GrB_DIV_FP64, bc_update, paths,
             GrB_DESC_RS)) ;
 
         //----------------------------------------------------------------------
@@ -275,19 +289,19 @@ int LAGr_Betweenness
         if (do_pull)
         {
             // W<S[i−1]> = W * A'
-            #if LAGRAPH_SUITESPARSE
-            GRB_TRY (GxB_set (W, GxB_SPARSITY_CONTROL, GxB_BITMAP)) ;
+            #if LG_SUITESPARSE
+            GrB_TRY (GxB_set (W, GxB_SPARSITY_CONTROL, GxB_BITMAP)) ;
             #endif
-            GRB_TRY (GrB_mxm (W, S [i-1], NULL, LAGraph_plus_first_fp64, W, A,
+            GrB_TRY (GrB_mxm (W, S [i-1], NULL, LAGraph_plus_first_fp64, W, A,
                 GrB_DESC_RST1)) ;
         }
         else // push
         {
             // W<S[i−1]> = W * AT
-            #if LAGRAPH_SUITESPARSE
-            GRB_TRY (GxB_set (W, GxB_SPARSITY_CONTROL, GxB_SPARSE)) ;
+            #if LG_SUITESPARSE
+            GrB_TRY (GxB_set (W, GxB_SPARSITY_CONTROL, GxB_SPARSE)) ;
             #endif
-            GRB_TRY (GrB_mxm (W, S [i-1], NULL, LAGraph_plus_first_fp64, W, AT,
+            GrB_TRY (GrB_mxm (W, S [i-1], NULL, LAGraph_plus_first_fp64, W, AT,
                 GrB_DESC_RS)) ;
         }
 
@@ -295,7 +309,7 @@ int LAGr_Betweenness
         // bc_update += W .* paths
         //----------------------------------------------------------------------
 
-        GRB_TRY (GrB_eWiseMult (bc_update, NULL, GrB_PLUS_FP64, GrB_TIMES_FP64,
+        GrB_TRY (GrB_eWiseMult (bc_update, NULL, GrB_PLUS_FP64, GrB_TIMES_FP64,
             W, paths, NULL)) ;
     }
 
@@ -305,13 +319,13 @@ int LAGr_Betweenness
 
     // Initialize the centrality array with -ns to avoid counting
     // zero length paths
-    GRB_TRY (GrB_Vector_new (centrality, GrB_FP64, n)) ;
-    GRB_TRY (GrB_assign (*centrality, NULL, NULL, -ns, GrB_ALL, n, NULL)) ;
+    GrB_TRY (GrB_Vector_new (centrality, GrB_FP64, n)) ;
+    GrB_TRY (GrB_assign (*centrality, NULL, NULL, -ns, GrB_ALL, n, NULL)) ;
 
-    // centrality (i) += sum (bc_update (:,i)) for all nodes i
-    GRB_TRY (GrB_reduce (*centrality, NULL, GrB_PLUS_FP64, GrB_PLUS_MONOID_FP64,
+    // centrality (i) = sum (bc_update (:,i)) for all nodes i
+    GrB_TRY (GrB_reduce (*centrality, NULL, GrB_PLUS_FP64, GrB_PLUS_MONOID_FP64,
         bc_update, GrB_DESC_T0)) ;
 
-    LG_FREE_WORK ;
-    return (GrB_SUCCESS) ;
+    LAGraph_FREE_WORK ;
+    return (0) ;
 }

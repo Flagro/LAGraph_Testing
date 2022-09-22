@@ -1,15 +1,13 @@
 //------------------------------------------------------------------------------
-// LAGraph_demo.h: include file for LAGraph/src/benchmark programs
+// LAGraph_demo.h: include file for LAGraph/src/demo programs
 //------------------------------------------------------------------------------
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University
 
 //------------------------------------------------------------------------------
+
+// Contributed by Tim Davis, Texas A&M University
 
 #ifndef LAGRAPH_DEMO_H
 #define LAGRAPH_DEMO_H
@@ -17,55 +15,51 @@
 #include <LAGraph.h>
 #include <LG_test.h>
 
-#if defined ( __linux__ )
-// for mallopt
-#include <malloc.h>
-#endif
-
 // set this to 1 to check the results using a slow method
 #define LG_CHECK_RESULT 0
 
-#define DEAD_CODE -911
 #define CATCH(status)                                                         \
 {                                                                             \
     printf ("error: %s line: %d, status: %d\n", __FILE__, __LINE__, status) ; \
-    if (msg [0] != '\0') printf ("msg: %s\n", msg) ;                          \
-    LG_FREE_ALL ;                                                             \
-    return (status) ;                                                         \
+    LAGraph_FREE_ALL ;                                                        \
+    return (-1) ;                                                             \
 }
 
-#undef  LAGRAPH_CATCH
-#define LAGRAPH_CATCH(status) CATCH (status)
+#undef  LAGraph_CATCH
+#define LAGraph_CATCH(status) CATCH (status)
 
-#undef  GRB_CATCH
-#define GRB_CATCH(info) CATCH (info)
+#undef  GrB_CATCH
+#define GrB_CATCH(info) CATCH (info)
 
+#define ERROR CATCH(-1)
 #define LAGRAPH_BIN_HEADER 512
 #define LEN LAGRAPH_BIN_HEADER
 
-#if !LAGRAPH_SUITESPARSE
+#if !LG_VANILLA
+#if !LG_SUITESPARSE
 #error "SuiteSparse:GraphBLAS v6.0.0 or later is required"
+#endif
 #endif
 
 //------------------------------------------------------------------------------
 // binwrite: write a matrix to a binary file
 //------------------------------------------------------------------------------
 
-#define LG_FREE_ALL                         \
-{                                           \
-    GrB_free (A) ;                          \
-    LAGraph_Free ((void **) &Ap, NULL) ;    \
-    LAGraph_Free ((void **) &Ab, NULL) ;    \
-    LAGraph_Free ((void **) &Ah, NULL) ;    \
-    LAGraph_Free ((void **) &Ai, NULL) ;    \
-    LAGraph_Free ((void **) &Ax, NULL) ;    \
+#define LAGraph_FREE_ALL                \
+{                                       \
+    GrB_free (A) ;                      \
+    LAGraph_Free ((void **) &Ap) ;      \
+    LAGraph_Free ((void **) &Ab) ;      \
+    LAGraph_Free ((void **) &Ah) ;      \
+    LAGraph_Free ((void **) &Ai) ;      \
+    LAGraph_Free ((void **) &Ax) ;      \
 }
 
 #define FWRITE(p,s,n)                   \
 {                                       \
     if (fwrite (p, s, n, f) != n)       \
     {                                   \
-        CATCH (LAGRAPH_IO_ERROR) ;      \
+        ERROR ;                         \
     }                                   \
 }
 
@@ -84,38 +78,35 @@ static inline int binwrite  // returns 0 if successful, < 0 on error
     // check inputs
     //--------------------------------------------------------------------------
 
-    char msg [LAGRAPH_MSG_LEN] ;
-    msg [0] = '\0' ;
-
-#if !LAGRAPH_SUITESPARSE
+#if !LG_SUITESPARSE
     printf ("SuiteSparse:GraphBLAS required to write binary *.grb files\n") ;
-    return (GrB_NOT_IMPLEMENTED) ;
+    return (-1) ;
 #else
 
     GrB_Index *Ap = NULL, *Ai = NULL, *Ah = NULL ;
     void *Ax = NULL ;
     int8_t *Ab = NULL ;
-    if (A == NULL || *A == NULL || f == NULL) CATCH (GrB_NULL_POINTER) ;
+    if (A == NULL || *A == NULL || f == NULL) ERROR ;
 
-    GRB_TRY (GrB_wait (*A, GrB_MATERIALIZE)) ;
+    GrB_TRY (GrB_wait (*A, GrB_MATERIALIZE)) ;
 
     //--------------------------------------------------------------------------
     // determine the basic matrix properties
     //--------------------------------------------------------------------------
 
     GxB_Format_Value fmt = -999 ;
-    GRB_TRY (GxB_get (*A, GxB_FORMAT, &fmt)) ;
+    GrB_TRY (GxB_get (*A, GxB_FORMAT, &fmt)) ;
 
     bool is_hyper = false ;
     bool is_sparse = false ;
     bool is_bitmap = false ;
     bool is_full  = false ;
-    GRB_TRY (GxB_get (*A, GxB_IS_HYPER, &is_hyper)) ;
+    GrB_TRY (GxB_get (*A, GxB_IS_HYPER, &is_hyper)) ;
     int32_t kind ;
     double hyper = -999 ;
 
-    GRB_TRY (GxB_get (*A, GxB_HYPER_SWITCH, &hyper)) ;
-    GRB_TRY (GxB_get (*A, GxB_SPARSITY_STATUS, &kind)) ;
+    GrB_TRY (GxB_get (*A, GxB_HYPER_SWITCH, &hyper)) ;
+    GrB_TRY (GxB_get (*A, GxB_SPARSITY_STATUS, &kind)) ;
 
     switch (kind)
     {
@@ -133,7 +124,7 @@ static inline int binwrite  // returns 0 if successful, < 0 on error
 
     GrB_Type type ;
     GrB_Index nrows, ncols, nvals, nvec ;
-    GRB_TRY (GrB_Matrix_nvals (&nvals, *A)) ;
+    GrB_TRY (GrB_Matrix_nvals (&nvals, *A)) ;
     size_t typesize ;
     int64_t nonempty = -1 ;
     char *fmt_string ;
@@ -143,7 +134,7 @@ static inline int binwrite  // returns 0 if successful, < 0 on error
     if (fmt == GxB_BY_COL && is_hyper)
     {
         // hypersparse CSC
-        GRB_TRY (GxB_Matrix_export_HyperCSC (A, &type, &nrows, &ncols,
+        GrB_TRY (GxB_Matrix_export_HyperCSC (A, &type, &nrows, &ncols,
             &Ap, &Ah, &Ai, &Ax, &Ap_size, &Ah_size, &Ai_size, &Ax_size,
             &iso, &nvec, &jumbled, NULL)) ;
         fmt_string = "HCSC" ;
@@ -151,7 +142,7 @@ static inline int binwrite  // returns 0 if successful, < 0 on error
     else if (fmt == GxB_BY_ROW && is_hyper)
     {
         // hypersparse CSR
-        GRB_TRY (GxB_Matrix_export_HyperCSR (A, &type, &nrows, &ncols,
+        GrB_TRY (GxB_Matrix_export_HyperCSR (A, &type, &nrows, &ncols,
             &Ap, &Ah, &Ai, &Ax, &Ap_size, &Ah_size, &Ai_size, &Ax_size,
             &iso, &nvec, &jumbled, NULL)) ;
         fmt_string = "HCSR" ;
@@ -159,7 +150,7 @@ static inline int binwrite  // returns 0 if successful, < 0 on error
     else if (fmt == GxB_BY_COL && is_sparse)
     {
         // standard CSC
-        GRB_TRY (GxB_Matrix_export_CSC (A, &type, &nrows, &ncols,
+        GrB_TRY (GxB_Matrix_export_CSC (A, &type, &nrows, &ncols,
             &Ap, &Ai, &Ax, &Ap_size, &Ai_size, &Ax_size,
             &iso, &jumbled, NULL)) ;
         nvec = ncols ;
@@ -168,7 +159,7 @@ static inline int binwrite  // returns 0 if successful, < 0 on error
     else if (fmt == GxB_BY_ROW && is_sparse)
     {
         // standard CSR
-        GRB_TRY (GxB_Matrix_export_CSR (A, &type, &nrows, &ncols,
+        GrB_TRY (GxB_Matrix_export_CSR (A, &type, &nrows, &ncols,
             &Ap, &Ai, &Ax, &Ap_size, &Ai_size, &Ax_size,
             &iso, &jumbled, NULL)) ;
         nvec = nrows ;
@@ -177,7 +168,7 @@ static inline int binwrite  // returns 0 if successful, < 0 on error
     else if (fmt == GxB_BY_COL && is_bitmap)
     {
         // bitmap by col
-        GRB_TRY (GxB_Matrix_export_BitmapC (A, &type, &nrows, &ncols,
+        GrB_TRY (GxB_Matrix_export_BitmapC (A, &type, &nrows, &ncols,
             &Ab, &Ax, &Ab_size, &Ax_size,
             &iso, &nvals, NULL)) ;
         nvec = ncols ;
@@ -186,7 +177,7 @@ static inline int binwrite  // returns 0 if successful, < 0 on error
     else if (fmt == GxB_BY_ROW && is_bitmap)
     {
         // bitmap by row
-        GRB_TRY (GxB_Matrix_export_BitmapR (A, &type, &nrows, &ncols,
+        GrB_TRY (GxB_Matrix_export_BitmapR (A, &type, &nrows, &ncols,
             &Ab, &Ax, &Ab_size, &Ax_size,
             &iso, &nvals, NULL)) ;
         nvec = nrows ;
@@ -195,7 +186,7 @@ static inline int binwrite  // returns 0 if successful, < 0 on error
     else if (fmt == GxB_BY_COL && is_full)
     {
         // full by col
-        GRB_TRY (GxB_Matrix_export_FullC (A, &type, &nrows, &ncols,
+        GrB_TRY (GxB_Matrix_export_FullC (A, &type, &nrows, &ncols,
             &Ax, &Ax_size,
             &iso, NULL)) ;
         nvec = ncols ;
@@ -204,7 +195,7 @@ static inline int binwrite  // returns 0 if successful, < 0 on error
     else if (fmt == GxB_BY_ROW && is_full)
     {
         // full by row
-        GRB_TRY (GxB_Matrix_export_FullR (A, &type, &nrows, &ncols,
+        GrB_TRY (GxB_Matrix_export_FullR (A, &type, &nrows, &ncols,
             &Ax, &Ax_size,
             &iso, NULL)) ;
         nvec = nrows ;
@@ -212,14 +203,15 @@ static inline int binwrite  // returns 0 if successful, < 0 on error
     }
     else
     {
-        CATCH (DEAD_CODE) ;    // this "cannot" happen
+        // unknown format
+        ERROR ;
     }
 
     //--------------------------------------------------------------------------
     // create the type string
     //--------------------------------------------------------------------------
 
-    GRB_TRY (GxB_Type_size (&typesize, type)) ;
+    GrB_TRY (GxB_Type_size (&typesize, type)) ;
 
     char typename [LEN] ;
     int32_t typecode ;
@@ -281,7 +273,7 @@ static inline int binwrite  // returns 0 if successful, < 0 on error
     else
     {
         // unsupported type (GxB_FC32 and GxB_FC64 not yet supported)
-        CATCH (GrB_NOT_IMPLEMENTED) ;
+        ERROR ;
     }
     typename [72] = '\0' ;
 
@@ -383,66 +375,66 @@ static inline int binwrite  // returns 0 if successful, < 0 on error
     if (fmt == GxB_BY_COL && is_hyper)
     {
         // hypersparse CSC
-        GRB_TRY (GxB_Matrix_import_HyperCSC (A, type, nrows, ncols,
+        GrB_TRY (GxB_Matrix_import_HyperCSC (A, type, nrows, ncols,
             &Ap, &Ah, &Ai, &Ax, Ap_size, Ah_size, Ai_size, Ax_size,
             iso, nvec, jumbled, NULL)) ;
     }
     else if (fmt == GxB_BY_ROW && is_hyper)
     {
         // hypersparse CSR
-        GRB_TRY (GxB_Matrix_import_HyperCSR (A, type, nrows, ncols,
+        GrB_TRY (GxB_Matrix_import_HyperCSR (A, type, nrows, ncols,
             &Ap, &Ah, &Ai, &Ax, Ap_size, Ah_size, Ai_size, Ax_size,
             iso, nvec, jumbled, NULL)) ;
     }
     else if (fmt == GxB_BY_COL && is_sparse)
     {
         // standard CSC
-        GRB_TRY (GxB_Matrix_import_CSC (A, type, nrows, ncols,
+        GrB_TRY (GxB_Matrix_import_CSC (A, type, nrows, ncols,
             &Ap, &Ai, &Ax, Ap_size, Ai_size, Ax_size,
             iso, jumbled, NULL)) ;
     }
     else if (fmt == GxB_BY_ROW && is_sparse)
     {
         // standard CSR
-        GRB_TRY (GxB_Matrix_import_CSR (A, type, nrows, ncols,
+        GrB_TRY (GxB_Matrix_import_CSR (A, type, nrows, ncols,
             &Ap, &Ai, &Ax, Ap_size, Ai_size, Ax_size,
             iso, jumbled, NULL)) ;
     }
     else if (fmt == GxB_BY_COL && is_bitmap)
     {
         // bitmap by col
-        GRB_TRY (GxB_Matrix_import_BitmapC (A, type, nrows, ncols,
+        GrB_TRY (GxB_Matrix_import_BitmapC (A, type, nrows, ncols,
             &Ab, &Ax, Ab_size, Ax_size,
             iso, nvals, NULL)) ;
     }
     else if (fmt == GxB_BY_ROW && is_bitmap)
     {
         // bitmap by row
-        GRB_TRY (GxB_Matrix_import_BitmapR (A, type, nrows, ncols,
+        GrB_TRY (GxB_Matrix_import_BitmapR (A, type, nrows, ncols,
             &Ab, &Ax, Ab_size, Ax_size,
             iso, nvals, NULL)) ;
     }
     else if (fmt == GxB_BY_COL && is_full)
     {
         // full by col
-        GRB_TRY (GxB_Matrix_import_FullC (A, type, nrows, ncols,
+        GrB_TRY (GxB_Matrix_import_FullC (A, type, nrows, ncols,
             &Ax, Ax_size,
             iso, NULL)) ;
     }
     else if (fmt == GxB_BY_ROW && is_full)
     {
         // full by row
-        GRB_TRY (GxB_Matrix_import_FullR (A, type, nrows, ncols,
+        GrB_TRY (GxB_Matrix_import_FullR (A, type, nrows, ncols,
             &Ax, Ax_size,
             iso, NULL)) ;
     }
     else
     {
-        CATCH (DEAD_CODE) ;    // this "cannot" happen
+        ERROR ;
     }
 
-    GRB_TRY (GxB_set (*A, GxB_HYPER_SWITCH, hyper)) ;
-    return (GrB_SUCCESS) ;
+    GrB_TRY (GxB_set (*A, GxB_HYPER_SWITCH, hyper)) ;
+    return (0) ;
 #endif
 }
 
@@ -454,7 +446,7 @@ static inline int binwrite  // returns 0 if successful, < 0 on error
 {                                       \
     if (fread (p, s, n, f) != n)        \
     {                                   \
-        CATCH (-1001) ; /* file I/O error */ \
+        ERROR ;                         \
     }                                   \
 }
 
@@ -469,18 +461,15 @@ static inline int binread   // returns 0 if successful, -1 if failure
     // check inputs
     //--------------------------------------------------------------------------
 
-    char msg [LAGRAPH_MSG_LEN] ;
-    msg [0] = '\0' ;
-
-#if !LAGRAPH_SUITESPARSE
+#if !LG_SUITESPARSE
     printf ("SuiteSparse:GraphBLAS required to read binary *.grb files\n") ;
-    return (GrB_NOT_IMPLEMENTED) ;
+    return (-1) ;
 #else
 
     GrB_Index *Ap = NULL, *Ai = NULL, *Ah = NULL ;
     int8_t *Ab = NULL ;
     void *Ax = NULL ;
-    if (A == NULL || f == NULL) CATCH (GrB_NULL_POINTER) ;
+    if (A == NULL || f == NULL) ERROR ;
     (*A) = NULL ;
 
     //--------------------------------------------------------------------------
@@ -551,7 +540,7 @@ static inline int binread   // returns 0 if successful, -1 if failure
         case 11: type = GxB_FC32        ; break ;
         case 12: type = GxB_FC64        ; break ;
         #endif
-        default: CATCH (GrB_NOT_IMPLEMENTED) ;    // unknown or unsupported type
+        default: ERROR ;    // unknown or unsupported type
     }
 
     //--------------------------------------------------------------------------
@@ -571,9 +560,9 @@ static inline int binread   // returns 0 if successful, -1 if failure
         Ah_len = nvec ;
         Ai_len = nvals ;
         Ax_len = nvals ;
-        LAGraph_Malloc ((void **) &Ap, Ap_len, sizeof (GrB_Index), msg) ;
-        LAGraph_Malloc ((void **) &Ah, Ah_len, sizeof (GrB_Index), msg) ;
-        LAGraph_Malloc ((void **) &Ai, Ai_len, sizeof (GrB_Index), msg) ;
+        Ap = LAGraph_Malloc (Ap_len, sizeof (GrB_Index)) ;
+        Ah = LAGraph_Malloc (Ah_len, sizeof (GrB_Index)) ;
+        Ai = LAGraph_Malloc (Ai_len, sizeof (GrB_Index)) ;
         Ap_size = Ap_len * sizeof (GrB_Index) ;
         Ah_size = Ah_len * sizeof (GrB_Index) ;
         Ai_size = Ai_len * sizeof (GrB_Index) ;
@@ -584,8 +573,8 @@ static inline int binread   // returns 0 if successful, -1 if failure
         Ap_len = nvec+1 ;
         Ai_len = nvals ;
         Ax_len = nvals ;
-        LAGraph_Malloc ((void **) &Ap, Ap_len, sizeof (GrB_Index), msg) ;
-        LAGraph_Malloc ((void **) &Ai, Ai_len, sizeof (GrB_Index), msg) ;
+        Ap = LAGraph_Malloc (Ap_len, sizeof (GrB_Index)) ;
+        Ai = LAGraph_Malloc (Ai_len, sizeof (GrB_Index)) ;
         Ap_size = Ap_len * sizeof (GrB_Index) ;
         Ai_size = Ai_len * sizeof (GrB_Index) ;
         ok = (Ap != NULL && Ai != NULL) ;
@@ -594,7 +583,7 @@ static inline int binread   // returns 0 if successful, -1 if failure
     {
         Ab_len = nrows*ncols ;
         Ax_len = nrows*ncols ;
-        LAGraph_Malloc ((void **) &Ab, nrows*ncols, sizeof (int8_t), msg) ;
+        Ab = LAGraph_Malloc (nrows*ncols, sizeof (int8_t)) ;
         Ab_size = Ab_len * sizeof (GrB_Index) ;
         ok = (Ab != NULL) ;
     }
@@ -604,12 +593,12 @@ static inline int binread   // returns 0 if successful, -1 if failure
     }
     else
     {
-        CATCH (DEAD_CODE) ;    // this "cannot" happen
+        ERROR ;     // unknown matrix format
     }
-    LAGraph_Malloc ((void **) &Ax, iso ? 1 : Ax_len, typesize, msg) ;
+    Ax = LAGraph_Malloc (iso ? 1 : Ax_len, typesize) ;
     Ax_size = (iso ? 1 : Ax_len) * typesize ;
     ok = ok && (Ax != NULL) ;
-    if (!ok) CATCH (GrB_OUT_OF_MEMORY) ;        // out of memory
+    if (!ok) ERROR ;        // out of memory
 
     //--------------------------------------------------------------------------
     // read the array content
@@ -640,66 +629,66 @@ static inline int binread   // returns 0 if successful, -1 if failure
     if (fmt == GxB_BY_COL && is_hyper)
     {
         // hypersparse CSC
-        GRB_TRY (GxB_Matrix_import_HyperCSC (A, type, nrows, ncols,
+        GrB_TRY (GxB_Matrix_import_HyperCSC (A, type, nrows, ncols,
             &Ap, &Ah, &Ai, &Ax, Ap_size, Ah_size, Ai_size, Ax_size,
             iso, nvec, false, NULL)) ;
     }
     else if (fmt == GxB_BY_ROW && is_hyper)
     {
         // hypersparse CSR
-        GRB_TRY (GxB_Matrix_import_HyperCSR (A, type, nrows, ncols,
+        GrB_TRY (GxB_Matrix_import_HyperCSR (A, type, nrows, ncols,
             &Ap, &Ah, &Ai, &Ax, Ap_size, Ah_size, Ai_size, Ax_size,
             iso, nvec, false, NULL)) ;
     }
     else if (fmt == GxB_BY_COL && is_sparse)
     {
         // standard CSC
-        GRB_TRY (GxB_Matrix_import_CSC (A, type, nrows, ncols,
+        GrB_TRY (GxB_Matrix_import_CSC (A, type, nrows, ncols,
             &Ap, &Ai, &Ax, Ap_size, Ai_size, Ax_size,
             iso, false, NULL)) ;
     }
     else if (fmt == GxB_BY_ROW && is_sparse)
     {
         // standard CSR
-        GRB_TRY (GxB_Matrix_import_CSR (A, type, nrows, ncols,
+        GrB_TRY (GxB_Matrix_import_CSR (A, type, nrows, ncols,
             &Ap, &Ai, &Ax, Ap_size, Ai_size, Ax_size,
             iso, false, NULL)) ;
     }
     else if (fmt == GxB_BY_COL && is_bitmap)
     {
         // bitmap by col
-        GRB_TRY (GxB_Matrix_import_BitmapC (A, type, nrows, ncols,
+        GrB_TRY (GxB_Matrix_import_BitmapC (A, type, nrows, ncols,
             &Ab, &Ax, Ab_size, Ax_size,
             iso, nvals, NULL)) ;
     }
     else if (fmt == GxB_BY_ROW && is_bitmap)
     {
         // bitmap by row
-        GRB_TRY (GxB_Matrix_import_BitmapR (A, type, nrows, ncols,
+        GrB_TRY (GxB_Matrix_import_BitmapR (A, type, nrows, ncols,
             &Ab, &Ax, Ab_size, Ax_size,
             iso, nvals, NULL)) ;
     }
     else if (fmt == GxB_BY_COL && is_full)
     {
         // full by col
-        GRB_TRY (GxB_Matrix_import_FullC (A, type, nrows, ncols,
+        GrB_TRY (GxB_Matrix_import_FullC (A, type, nrows, ncols,
             &Ax, Ax_size,
             iso, NULL)) ;
     }
     else if (fmt == GxB_BY_ROW && is_full)
     {
         // full by row
-        GRB_TRY (GxB_Matrix_import_FullR (A, type, nrows, ncols,
+        GrB_TRY (GxB_Matrix_import_FullR (A, type, nrows, ncols,
             &Ax, Ax_size,
             iso, NULL)) ;
     }
     else
     {
-        CATCH (DEAD_CODE) ;    // this "cannot" happen
+        ERROR ;     // unknown format
     }
 
-    GRB_TRY (GxB_set (*A, GxB_HYPER_SWITCH, hyper)) ;
-    return (GrB_SUCCESS) ;
+    GrB_TRY (GxB_set (*A, GxB_HYPER_SWITCH, hyper)) ;
+    return (0) ;
 #endif
 }
 
@@ -707,8 +696,8 @@ static inline int binread   // returns 0 if successful, -1 if failure
 // readproblem: read a GAP problem from a file
 //------------------------------------------------------------------------------
 
-#undef  LG_FREE_WORK
-#define LG_FREE_WORK                \
+#undef  LAGraph_FREE_WORK
+#define LAGraph_FREE_WORK           \
 {                                   \
     GrB_free (&A) ;                 \
     GrB_free (&A2) ;                \
@@ -717,10 +706,10 @@ static inline int binread   // returns 0 if successful, -1 if failure
     f = NULL ;                      \
 }
 
-#undef  LG_FREE_ALL
-#define LG_FREE_ALL                 \
+#undef  LAGraph_FREE_ALL
+#define LAGraph_FREE_ALL            \
 {                                   \
-    LG_FREE_WORK ;                  \
+    LAGraph_FREE_WORK ;             \
     LAGraph_Delete (G, NULL) ;      \
     GrB_free (src_nodes) ;          \
 }
@@ -729,6 +718,43 @@ static inline int binread   // returns 0 if successful, -1 if failure
 // test_whatever < matrixfile.mtx
 // test_whatever matrixfile.mtx sourcenodes.mtx
 // The matrixfile may also have a grb suffix.
+
+void save_teps(const char *_op_name, double _time, size_t _nvals, int _iterations)
+{
+    double my_time = _time*1000;
+    double my_perf = _iterations*(_nvals / (_time*1e6));
+    double my_bw = 0;
+    FILE *my_f;
+    my_f = fopen("perf_stats.txt", "a");
+    fprintf(my_f, "%s %lf (ms) %lf (MTEPS/s) %lf (GB/s) %lld\n", _op_name, my_time, my_perf, my_bw, _nvals);
+    fclose(my_f);
+}
+
+void save_time_in_ms(const char *_op_name, double _time)
+{
+    double my_t2 = omp_get_wtime();
+    double my_time = (_time)*1000;
+    double my_perf = 0;
+    double my_bw = 0;
+    size_t my_nvals = 0;
+    FILE *my_f;
+    my_f = fopen("perf_stats.txt", "a");
+    fprintf(my_f, "%s %lf (ms) %lf (GFLOP/s) %lf (GB/s) %lld\n", _op_name, my_time, my_perf, my_bw, my_nvals);
+    fclose(my_f);
+}
+
+void save_time_in_sec(const char *_op_name, double _time)
+{
+    double my_t2 = omp_get_wtime();
+    double my_time = (_time);
+    double my_perf = 0;
+    double my_bw = 0;
+    size_t my_nvals = 0;
+    FILE *my_f;
+    my_f = fopen("perf_stats.txt", "a");
+    fprintf(my_f, "%s %lf (ms) %lf (GFLOP/s) %lf (GB/s) %lld\n", _op_name, my_time, my_perf, my_bw, my_nvals);
+    fclose(my_f);
+}
 
 static int readproblem          // returns 0 if successful, -1 if failure
 (
@@ -750,22 +776,21 @@ static int readproblem          // returns 0 if successful, -1 if failure
     // check inputs
     //--------------------------------------------------------------------------
 
-    char msg [LAGRAPH_MSG_LEN] ;
-    msg [0] = '\0' ;
     GrB_Matrix A = NULL, A2 = NULL, M = NULL ;
-    GrB_Type atype = NULL ;
+    GrB_Type A_type = NULL;
     FILE *f = NULL ;
-    if (G == NULL) CATCH (GrB_NULL_POINTER) ;
+    if (G == NULL) ERROR ;
     (*G) = NULL ;
     if (src_nodes != NULL) (*src_nodes) = NULL ;
     GrB_Type src_type = NULL;
+    char msg [LAGRAPH_MSG_LEN] ;
 
     //--------------------------------------------------------------------------
     // read in a matrix from a file
     //--------------------------------------------------------------------------
 
     double tic [2] ;
-    LAGRAPH_TRY (LAGraph_Tic (tic, NULL)) ;
+    LAGraph_TRY (LAGraph_Tic (tic, NULL)) ;
 
     if (argc > 1)
     {
@@ -801,7 +826,10 @@ static int readproblem          // returns 0 if successful, -1 if failure
                 printf ("Binary file not found: [%s]\n", filename) ;
                 exit (1) ;
             }
-            if (binread (&A, f) < 0) CATCH (-1001) ;    // file I/O error
+            if (binread (&A, f) < 0) ERROR ;
+            #if LG_SUITESPARSE
+            GrB_TRY (GxB_Matrix_type (&A_type, A)) ;
+            #endif
             fclose (f) ;
             f = NULL ;
         }
@@ -814,14 +842,7 @@ static int readproblem          // returns 0 if successful, -1 if failure
                 printf ("Matrix market file not found: [%s]\n", filename) ;
                 exit (1) ;
             }
-            int result = LAGraph_MMRead (&A, f, msg) ;
-            if (result != GrB_SUCCESS)
-            {
-                printf ("LAGraph_MMRead failed to read matrix: %s\n",
-                    filename) ;
-                printf ("result: %d msg: %s\n", result, msg) ;
-            }
-            LAGRAPH_TRY (result) ;
+            LAGraph_TRY (LAGraph_MMRead (&A, &A_type, f, msg)) ;
             fclose (f) ;
             f = NULL ;
         }
@@ -840,14 +861,7 @@ static int readproblem          // returns 0 if successful, -1 if failure
                     printf ("Source node file not found: [%s]\n", filename) ;
                     exit (1) ;
                 }
-                int result = LAGraph_MMRead (src_nodes, f, msg) ;
-                if (result != GrB_SUCCESS)
-                {
-                    printf ("LAGraph_MMRead failed to read source nodes"
-                        " from: %s\n", filename) ;
-                    printf ("result: %d msg: %s\n", result, msg) ;
-                }
-                LAGRAPH_TRY (result) ;
+                LAGraph_TRY (LAGraph_MMRead (src_nodes, &src_type, f, msg)) ;
                 fclose (f) ;
                 f = NULL ;
             }
@@ -860,13 +874,7 @@ static int readproblem          // returns 0 if successful, -1 if failure
         printf ("matrix: from stdin\n") ;
 
         // read in the file in Matrix Market format from stdin
-        int result = LAGraph_MMRead (&A, stdin, msg) ;
-        if (result != GrB_SUCCESS)
-        {
-            printf ("LAGraph_MMRead failed to read: stdin\n") ;
-            printf ("result: %d msg: %s\n", result, msg) ;
-        }
-        LAGRAPH_TRY (result) ;
+        LAGraph_TRY (LAGraph_MMRead (&A, &A_type, stdin, msg)) ;
     }
 
     //--------------------------------------------------------------------------
@@ -874,28 +882,26 @@ static int readproblem          // returns 0 if successful, -1 if failure
     //--------------------------------------------------------------------------
 
     GrB_Index nrows, ncols ;
-    GRB_TRY (GrB_Matrix_nrows (&nrows, A)) ;
-    GRB_TRY (GrB_Matrix_ncols (&ncols, A)) ;
+    GrB_TRY (GrB_Matrix_nrows (&nrows, A)) ;
+    GrB_TRY (GrB_Matrix_ncols (&ncols, A)) ;
     GrB_Index n = nrows ;
-    if (nrows != ncols) CATCH (GrB_DIMENSION_MISMATCH) ;    // A must be square
+    if (nrows != ncols) ERROR ;     // A must be square
 
     //--------------------------------------------------------------------------
     // typecast, if requested
     //--------------------------------------------------------------------------
 
-    GRB_TRY (GxB_Matrix_type (&atype, A)) ;
-
     if (structural)
     {
         // convert to boolean, with all entries true
-        atype = GrB_BOOL ;
-        LAGRAPH_TRY (LAGraph_Matrix_Structure (&A2, A, msg)) ;
+        A_type = GrB_BOOL ;
+        LAGraph_TRY (LAGraph_Structure (&A2, A, msg)) ;
     }
-    else if (pref != NULL && atype != pref)
+    else if (pref != NULL && A_type != pref)
     {
         // convert to the requested type
-        GRB_TRY (GrB_Matrix_new (&A2, pref, n, n)) ;
-        atype = pref ;
+        GrB_TRY (GrB_Matrix_new (&A2, pref, n, n)) ;
+        A_type = pref ;
 
         GrB_UnaryOp op = NULL ;
         if      (pref == GrB_BOOL  ) op = GrB_IDENTITY_BOOL ;
@@ -913,9 +919,9 @@ static int readproblem          // returns 0 if successful, -1 if failure
         else if (pref == GxB_FC32  ) op = GxB_IDENTITY_FC32 ;
         else if (pref == GxB_FC64  ) op = GxB_IDENTITY_FC64 ;
         #endif
-        else CATCH (GrB_NOT_IMPLEMENTED) ;    // unsupported type
+        else ERROR ;    // unsupported type
 
-        GRB_TRY (GrB_apply (A2, NULL, NULL, op, A, NULL)) ;
+        GrB_TRY (GrB_apply (A2, NULL, NULL, op, A, NULL)) ;
     }
 
     if (A2 != NULL)
@@ -923,7 +929,7 @@ static int readproblem          // returns 0 if successful, -1 if failure
         GrB_free (&A) ;
         A = A2 ;
         A2 = NULL ;
-        GRB_TRY (GrB_wait (A, GrB_MATERIALIZE)) ;
+        GrB_TRY (GrB_wait (A, GrB_MATERIALIZE)) ;
     }
 
     //--------------------------------------------------------------------------
@@ -934,10 +940,10 @@ static int readproblem          // returns 0 if successful, -1 if failure
         (n == 134217726 ||  // HACK for kron
          n == 134217728) ;  // HACK for urand
 
-    LAGraph_Kind G_kind = A_is_symmetric ?  LAGraph_ADJACENCY_UNDIRECTED :
-        LAGraph_ADJACENCY_DIRECTED ;
-    LAGRAPH_TRY (LAGraph_New (G, &A, G_kind, msg)) ;
-    // LAGRAPH_TRY (LAGraph_DisplayGraph (*G, 2, stdout, msg)) ;
+    LAGraph_Kind G_kind = A_is_symmetric ?  LAGRAPH_ADJACENCY_UNDIRECTED :
+        LAGRAPH_ADJACENCY_DIRECTED ;
+    LAGraph_TRY (LAGraph_New (G, &A, A_type, G_kind, msg)) ;
+    // LAGraph_TRY (LAGraph_DisplayGraph (*G, 2, stdout, msg)) ;
 
     //--------------------------------------------------------------------------
     // remove self-edges, if requested
@@ -945,9 +951,9 @@ static int readproblem          // returns 0 if successful, -1 if failure
 
     if (remove_self_edges)
     {
-        LAGRAPH_TRY (LAGraph_DeleteDiag (*G, msg)) ;
+        LAGraph_TRY (LAGraph_DeleteDiag (*G, msg)) ;
     }
-    // LAGRAPH_TRY (LAGraph_DisplayGraph (*G, 2, stdout, msg)) ;
+    // LAGraph_TRY (LAGraph_DisplayGraph (*G, 2, stdout, msg)) ;
 
     //--------------------------------------------------------------------------
     // ensure all entries are > 0, if requested
@@ -957,41 +963,41 @@ static int readproblem          // returns 0 if successful, -1 if failure
     {
         // drop explicit zeros (FUTURE: make this a utility function)
         GrB_IndexUnaryOp idxop = NULL ;
-        if      (atype == GrB_BOOL  ) idxop = GrB_VALUENE_BOOL ;
-        else if (atype == GrB_INT8  ) idxop = GrB_VALUENE_INT8 ;
-        else if (atype == GrB_INT16 ) idxop = GrB_VALUENE_INT16 ;
-        else if (atype == GrB_INT32 ) idxop = GrB_VALUENE_INT32 ;
-        else if (atype == GrB_INT64 ) idxop = GrB_VALUENE_INT64 ;
-        else if (atype == GrB_UINT8 ) idxop = GrB_VALUENE_UINT8 ;
-        else if (atype == GrB_UINT16) idxop = GrB_VALUENE_UINT16 ;
-        else if (atype == GrB_UINT32) idxop = GrB_VALUENE_UINT32 ;
-        else if (atype == GrB_UINT64) idxop = GrB_VALUENE_UINT64 ;
-        else if (atype == GrB_FP32  ) idxop = GrB_VALUENE_FP32 ;
-        else if (atype == GrB_FP64  ) idxop = GrB_VALUENE_FP64 ;
+        if      (A_type == GrB_BOOL  ) idxop = GrB_VALUENE_BOOL ;
+        else if (A_type == GrB_INT8  ) idxop = GrB_VALUENE_INT8 ;
+        else if (A_type == GrB_INT16 ) idxop = GrB_VALUENE_INT16 ;
+        else if (A_type == GrB_INT32 ) idxop = GrB_VALUENE_INT32 ;
+        else if (A_type == GrB_INT64 ) idxop = GrB_VALUENE_INT64 ;
+        else if (A_type == GrB_UINT8 ) idxop = GrB_VALUENE_UINT8 ;
+        else if (A_type == GrB_UINT16) idxop = GrB_VALUENE_UINT16 ;
+        else if (A_type == GrB_UINT32) idxop = GrB_VALUENE_UINT32 ;
+        else if (A_type == GrB_UINT64) idxop = GrB_VALUENE_UINT64 ;
+        else if (A_type == GrB_FP32  ) idxop = GrB_VALUENE_FP32 ;
+        else if (A_type == GrB_FP64  ) idxop = GrB_VALUENE_FP64 ;
         #if 0
-        else if (atype == GxB_FC32  ) idxop = GxB_VALUENE_FC32 ;
-        else if (atype == GxB_FC64  ) idxop = GxB_VALUENE_FC64 ;
+        else if (A_type == GxB_FC32  ) idxop = GxB_VALUENE_FC32 ;
+        else if (A_type == GxB_FC64  ) idxop = GxB_VALUENE_FC64 ;
         #endif
         if (idxop != NULL)
         {
-            GRB_TRY (GrB_select ((*G)->A, NULL, NULL, idxop, (*G)->A, 0, NULL));
+            GrB_TRY (GrB_select ((*G)->A, NULL, NULL, idxop, (*G)->A, 0, NULL));
         }
 
         // A = abs (A)
         GrB_UnaryOp op = NULL ;
-        if      (atype == GrB_INT8  ) op = GrB_ABS_INT8 ;
-        else if (atype == GrB_INT16 ) op = GrB_ABS_INT16 ;
-        else if (atype == GrB_INT32 ) op = GrB_ABS_INT32 ;
-        else if (atype == GrB_INT64 ) op = GrB_ABS_INT64 ;
-        else if (atype == GrB_FP32  ) op = GrB_ABS_FP32 ;
-        else if (atype == GrB_FP64  ) op = GrB_ABS_FP64 ;
+        if      (A_type == GrB_INT8  ) op = GrB_ABS_INT8 ;
+        else if (A_type == GrB_INT16 ) op = GrB_ABS_INT16 ;
+        else if (A_type == GrB_INT32 ) op = GrB_ABS_INT32 ;
+        else if (A_type == GrB_INT64 ) op = GrB_ABS_INT64 ;
+        else if (A_type == GrB_FP32  ) op = GrB_ABS_FP32 ;
+        else if (A_type == GrB_FP64  ) op = GrB_ABS_FP64 ;
         #if 0
-        else if (atype == GxB_FC32  ) op = GxB_ABS_FC32 ;
-        else if (atype == GxB_FC64  ) op = GxB_ABS_FC64 ;
+        else if (A_type == GxB_FC32  ) op = GxB_ABS_FC32 ;
+        else if (A_type == GxB_FC64  ) op = GxB_ABS_FC64 ;
         #endif
         if (op != NULL)
         {
-            GRB_TRY (GrB_apply ((*G)->A, NULL, NULL, op, (*G)->A, NULL)) ;
+            GrB_TRY (GrB_apply ((*G)->A, NULL, NULL, op, (*G)->A, NULL)) ;
         }
     }
 
@@ -999,53 +1005,56 @@ static int readproblem          // returns 0 if successful, -1 if failure
     // determine the graph properies
     //--------------------------------------------------------------------------
 
-    // LAGRAPH_TRY (LAGraph_DisplayGraph (*G, 2, stdout, msg)) ;
+    // LAGraph_TRY (LAGraph_DisplayGraph (*G, 2, stdout, msg)) ;
 
     if (!A_is_symmetric)
     {
         // compute G->AT and determine if A has a symmetric structure
-        LAGRAPH_TRY (LAGraph_Property_SymmetricStructure (*G, msg)) ;
-        if ((*G)->structure_is_symmetric && structural)
+        char *name;
+        LAGraph_TypeName(&name, (*G)->A_type, msg);
+        LAGraph_TRY (LAGraph_Property_ASymmetricStructure (*G, msg)) ;
+        if ((*G)->A_structure_is_symmetric && structural)
         {
             // if G->A has a symmetric structure, declare the graph undirected
             // and free G->AT since it isn't needed.
-            (*G)->kind = LAGraph_ADJACENCY_UNDIRECTED ;
-            GRB_TRY (GrB_Matrix_free (&((*G)->AT))) ;
+            (*G)->kind = LAGRAPH_ADJACENCY_UNDIRECTED ;
+            GrB_TRY (GrB_Matrix_free (&((*G)->AT))) ;
         }
         else if (make_symmetric)
         {
             // make sure G->A is symmetric
             bool sym ;
-            LAGRAPH_TRY (LAGraph_Matrix_IsEqual (&sym, (*G)->A, (*G)->AT, msg));
+            LAGraph_TRY (LAGraph_IsEqual_type (&sym, (*G)->A, (*G)->AT, 
+                (*G)->A_type, msg)) ;
             if (!sym)
             {
                 GrB_BinaryOp op = NULL ;
                 GrB_Type type ;
-                if      (atype == GrB_BOOL  ) op = GrB_LOR ;
-                else if (atype == GrB_INT8  ) op = GrB_PLUS_INT8 ;
-                else if (atype == GrB_INT16 ) op = GrB_PLUS_INT16 ;
-                else if (atype == GrB_INT32 ) op = GrB_PLUS_INT32 ;
-                else if (atype == GrB_INT64 ) op = GrB_PLUS_INT64 ;
-                else if (atype == GrB_UINT8 ) op = GrB_PLUS_UINT8 ;
-                else if (atype == GrB_UINT16) op = GrB_PLUS_UINT16 ;
-                else if (atype == GrB_UINT32) op = GrB_PLUS_UINT32 ;
-                else if (atype == GrB_UINT64) op = GrB_PLUS_UINT64 ;
-                else if (atype == GrB_FP32  ) op = GrB_PLUS_FP32 ;
-                else if (atype == GrB_FP64  ) op = GrB_PLUS_FP64 ;
+                if      ((*G)->A_type == GrB_BOOL  ) op = GrB_LOR ;
+                else if ((*G)->A_type == GrB_INT8  ) op = GrB_PLUS_INT8 ;
+                else if ((*G)->A_type == GrB_INT16 ) op = GrB_PLUS_INT16 ;
+                else if ((*G)->A_type == GrB_INT32 ) op = GrB_PLUS_INT32 ;
+                else if ((*G)->A_type == GrB_INT64 ) op = GrB_PLUS_INT64 ;
+                else if ((*G)->A_type == GrB_UINT8 ) op = GrB_PLUS_UINT8 ;
+                else if ((*G)->A_type == GrB_UINT16) op = GrB_PLUS_UINT16 ;
+                else if ((*G)->A_type == GrB_UINT32) op = GrB_PLUS_UINT32 ;
+                else if ((*G)->A_type == GrB_UINT64) op = GrB_PLUS_UINT64 ;
+                else if ((*G)->A_type == GrB_FP32  ) op = GrB_PLUS_FP32 ;
+                else if ((*G)->A_type == GrB_FP64  ) op = GrB_PLUS_FP64 ;
                 #if 0
                 else if (type == GxB_FC32  ) op = GxB_PLUS_FC32 ;
                 else if (type == GxB_FC64  ) op = GxB_PLUS_FC64 ;
                 #endif
-                else CATCH (GrB_NOT_IMPLEMENTED) ;    // unknown type
-                GRB_TRY (GrB_eWiseAdd ((*G)->A, NULL, NULL, op,
+                else ERROR ;    // unknown type
+                GrB_TRY (GrB_eWiseAdd ((*G)->A, NULL, NULL, op,
                                        (*G)->A, (*G)->AT, NULL)) ;
-                GRB_TRY (GrB_Matrix_free (&((*G)->AT))) ;
+                GrB_TRY (GrB_Matrix_free (&((*G)->AT))) ;
             }
-            (*G)->kind = LAGraph_ADJACENCY_UNDIRECTED ;
-            (*G)->structure_is_symmetric = true ;
+            (*G)->kind = LAGRAPH_ADJACENCY_UNDIRECTED ;
+            (*G)->A_structure_is_symmetric = true ;
         }
     }
-    // LAGRAPH_TRY (LAGraph_DisplayGraph (*G, 2, stdout, msg)) ;
+    // LAGraph_TRY (LAGraph_DisplayGraph (*G, 2, stdout, msg)) ;
 
     //--------------------------------------------------------------------------
     // generate 64 random source nodes, if requested but not provided on input
@@ -1056,19 +1065,19 @@ static int readproblem          // returns 0 if successful, -1 if failure
     if (src_nodes != NULL && (*src_nodes == NULL))
     {
         src_type = GrB_UINT64;
-        GRB_TRY (GrB_Matrix_new (src_nodes, src_type, NSOURCES, 1)) ;
+        GrB_TRY (GrB_Matrix_new (src_nodes, src_type, NSOURCES, 1)) ;
         srand (1) ;
         for (int k = 0 ; k < NSOURCES ; k++)
         {
             uint64_t i = 1 + (rand ( ) % n) ;    // in range 1 to n
             // src_nodes [k] = i
-            GRB_TRY (GrB_Matrix_setElement (*src_nodes, i, k, 0)) ;
+            GrB_TRY (GrB_Matrix_setElement (*src_nodes, i, k, 0)) ;
         }
     }
 
     if (src_nodes != NULL)
     {
-        GRB_TRY (GrB_wait (*src_nodes, GrB_MATERIALIZE)) ;
+        GrB_TRY (GrB_wait (*src_nodes, GrB_MATERIALIZE)) ;
     }
 
     //--------------------------------------------------------------------------
@@ -1076,39 +1085,26 @@ static int readproblem          // returns 0 if successful, -1 if failure
     //--------------------------------------------------------------------------
 
     double t_read ;
-    LAGRAPH_TRY (LAGraph_Toc (&t_read, tic, msg)) ;
+    LAGraph_TRY (LAGraph_Toc (&t_read, tic, msg)) ;
     printf ("read time: %g\n", t_read) ;
 
-    LG_FREE_WORK ;
-    // LAGRAPH_TRY (LAGraph_DisplayGraph (*G, LAGraph_SHORT, stdout, msg)) ;
-    return (GrB_SUCCESS) ;
+    LAGraph_FREE_WORK ;
+    // LAGraph_TRY (LAGraph_DisplayGraph (*G, 2, stdout, msg)) ;
+    return (0) ;
 }
 
 //------------------------------------------------------------------------------
 // demo_init: initialize LAGraph for a demo
 //------------------------------------------------------------------------------
 
-#undef  LG_FREE_WORK
-#undef  LG_FREE_ALL
-#define LG_FREE_ALL ;
+#undef  LAGraph_FREE_WORK
+#undef  LAGraph_FREE_ALL
+#define LAGraph_FREE_ALL ;
 
 static inline int demo_init (bool burble)
 {
-    char msg [LAGRAPH_MSG_LEN] ;
-    msg [0] = '\0' ;
-
-    #ifdef __linux__
-    // Use mallopt to speedup malloc and free on Linux.  Otherwise, it can take
-    // several seconds to free a large block of memory.  For this to be
-    // effective, demo_init must be called before calling malloc/free, and
-    // before calling LAGraph_Init.
-    mallopt (M_MMAP_MAX, 0) ;           // disable mmap; it's too slow
-    mallopt (M_TRIM_THRESHOLD, -1) ;    // disable sbrk trimming
-    mallopt (M_TOP_PAD, 16*1024*1024) ; // increase padding to speedup malloc
-    #endif
-
-    LAGRAPH_TRY (LAGraph_Init (NULL)) ;
-    #if LAGRAPH_SUITESPARSE
+    LAGraph_TRY (LAGraph_Init (NULL)) ;
+    #if LG_SUITESPARSE
     printf ("include: %s v%d.%d.%d [%s]\n",
         GxB_IMPLEMENTATION_NAME,
         GxB_IMPLEMENTATION_MAJOR,
@@ -1121,16 +1117,16 @@ static inline int demo_init (bool burble)
     GxB_get (GxB_LIBRARY_VERSION, version) ;
     printf ("v%d.%d.%d ", version [0], version [1], version [2]) ;
     GxB_get(GxB_LIBRARY_DATE, &s) ; printf ("[%s]\n", s) ;
-    GRB_TRY (GxB_set (GxB_BURBLE, burble)) ;
+    GrB_TRY (GxB_set (GxB_BURBLE, burble)) ;
     #else
     printf ("\n") ;
     printf ("###########################################################\n") ;
     printf ("### Vanilla GraphBLAS ... do not publish these results! ###\n") ;
     printf ("###########################################################\n") ;
     #endif
-    return (GrB_SUCCESS) ;
+    return (0) ;
 }
 
-#undef  LG_FREE_ALL
+#undef  LAGraph_FREE_ALL
 #endif
 

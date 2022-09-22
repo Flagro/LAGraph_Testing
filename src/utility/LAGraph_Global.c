@@ -4,16 +4,13 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University
+// Contributed by Tim Davis, Texas A&M University.
 
 //------------------------------------------------------------------------------
 
 #include "LG_internal.h"
 
-// These are modified by LAGraph_Init and LAGr_Init.
+// These are modified by LAGraph_Init and LAGraph_Xinit.
 
 void * (* LAGraph_Malloc_function  ) (size_t)         = malloc ;
 void * (* LAGraph_Calloc_function  ) (size_t, size_t) = calloc ;

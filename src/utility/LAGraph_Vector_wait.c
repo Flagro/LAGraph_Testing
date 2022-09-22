@@ -1,39 +1,33 @@
 //------------------------------------------------------------------------------
-// LAGraph_Property_NDiag: count the # of diagonal entries of a graph
+// LAGraph_Vector_wait: interface to GrB_Vector_wait
 //------------------------------------------------------------------------------
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-//
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
 // Contributed by Tim Davis, Texas A&M University.
 
 //------------------------------------------------------------------------------
 
 #include "LG_internal.h"
 
-int LAGraph_Property_NDiag  // returns 0 if successful, -1 if failure
+int LAGraph_Vector_wait     // wait on a vector
 (
-    LAGraph_Graph G,        // graph to compute G->ndiag for
+    GrB_Vector v,
     char *msg
 )
 {
-    //--------------------------------------------------------------------------
-    // clear msg and check G
-    //--------------------------------------------------------------------------
-
-    LG_CHECK_INIT (G, msg) ;
-
-    // already computed
-    if (G->ndiag != LAGRAPH_UNKNOWN)
-    {
-        return 0;
-    }
 
     //--------------------------------------------------------------------------
-    // compute G->ndiag
+    // check inputs
     //--------------------------------------------------------------------------
-    return (LG_ndiag (&G->ndiag, G->A, G->A_type, msg)) ;
+
+    LG_CLEAR_MSG ;
+    LG_CHECK (v == NULL, -1001, "A is NULL") ;
+
+    //--------------------------------------------------------------------------
+    // wait on the vector
+    //--------------------------------------------------------------------------
+
+    GrB_TRY (GrB_Vector_wait (v, GrB_MATERIALIZE)) ;
+    return (0) ;
 }

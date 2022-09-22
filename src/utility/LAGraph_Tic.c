@@ -4,10 +4,7 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University
+// Contributed by Tim Davis, Texas A&M University.
 
 //------------------------------------------------------------------------------
 
@@ -26,20 +23,17 @@
 
 #include "LG_internal.h"
 
-#if !defined ( _OPENMP )
-    #include <time.h>
-    #if defined ( __linux__ ) || defined ( __GNU__ )
-        #include <sys/time.h>
-    #endif
-    #if defined ( __MACH__ ) && defined ( __APPLE__ )
-        #include <mach/clock.h>
-        #include <mach/mach.h>
-    #endif
+#if defined ( __linux__ ) || defined ( __GNU__ )
+    #include <sys/time.h>
+#endif
+#if defined ( __MACH__ ) && defined ( __APPLE__ )
+    #include <mach/clock.h>
+    #include <mach/mach.h>
 #endif
 
-int LAGraph_Tic
+int LAGraph_Tic             // returns 0 if successful, -1 if failure
 (
-    double tic [2],     // tic [0]: seconds, tic [1]: nanoseconds
+    double tic [2],         // tic [0]: seconds, tic [1]: nanoseconds
     char *msg
 )
 {
@@ -57,7 +51,7 @@ int LAGraph_Tic
         // Linux has a very low resolution clock() function, so use the high
         // resolution clock_gettime instead.  May require -lrt
         struct timespec t ;
-        LAGRAPH_TRY (clock_gettime (CLOCK_MONOTONIC, &t)) ;
+        LAGraph_TRY (clock_gettime (CLOCK_MONOTONIC, &t)) ;
         tic [0] = (double) t.tv_sec ;
         tic [1] = (double) t.tv_nsec ;
 
@@ -86,6 +80,6 @@ int LAGraph_Tic
 
     #endif
 
-    return (GrB_SUCCESS) ;
+    return (0) ;
 }
 

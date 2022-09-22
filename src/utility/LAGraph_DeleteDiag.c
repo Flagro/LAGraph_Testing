@@ -4,19 +4,15 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University
+// Contributed by Tim Davis, Texas A&M University.
 
 //------------------------------------------------------------------------------
 
 #include "LG_internal.h"
 
-int LAGraph_DeleteDiag
+int LAGraph_DeleteDiag      // returns 0 if successful, < 0 if failure
 (
-    // input/output:
-    LAGraph_Graph G,    // diagonal entries removed, most properties cleared
+    LAGraph_Graph G,        // diagonal entries removed, most properties cleared
     char *msg
 )
 {
@@ -25,32 +21,32 @@ int LAGraph_DeleteDiag
     // clear msg and check G
     //--------------------------------------------------------------------------
 
-    LG_CLEAR_MSG_AND_BASIC_ASSERT (G, msg) ;
+    LG_CHECK_INIT (G, msg) ;
     if (G->ndiag == 0)
     {
         // nothing to do
-        return (GrB_SUCCESS) ;
+        return (0) ;
     }
 
     //--------------------------------------------------------------------------
     // delete all properties not affected by the removal of the diagonal
     //--------------------------------------------------------------------------
 
-    LAGraph_BooleanProperty structure_is_symmetric = G->structure_is_symmetric ;
-    LG_TRY (LAGraph_DeleteProperties (G, msg)) ;
-    G->structure_is_symmetric = structure_is_symmetric ;
+    LAGraph_BooleanProperty A_structure_is_symmetric = G->A_structure_is_symmetric ;
+    LAGraph_TRY (LAGraph_DeleteProperties (G, msg)) ;
+    G->A_structure_is_symmetric = A_structure_is_symmetric ;
 
     //--------------------------------------------------------------------------
     // remove diagonal entries
     //--------------------------------------------------------------------------
 
-    GRB_TRY (GrB_select (G->A, NULL, NULL, GrB_OFFDIAG, G->A, 0, NULL)) ;
+    GrB_TRY (GrB_select (G->A, NULL, NULL, GrB_OFFDIAG, G->A, 0, NULL)) ;
 
     //--------------------------------------------------------------------------
     // free workspace, G->ndiag now known to be zero
     //--------------------------------------------------------------------------
 
     G->ndiag = 0 ;
-    return (GrB_SUCCESS) ;
+    return (0) ;
 }
 

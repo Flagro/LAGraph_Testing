@@ -4,17 +4,14 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University
+// Contributed by Tim Davis, Texas A&M University.
 
 //------------------------------------------------------------------------------
 
 // A parallel mergesort of an array of 3-by-n integers.  Each key
 // consists of three integers.
 
-#define LG_FREE_ALL LAGraph_Free ((void **) &W, NULL) ;
+#define LAGraph_FREE_ALL LAGraph_Free ((void **) &W) ;
 
 #include "LG_internal.h"
 
@@ -241,8 +238,8 @@ void LG_msort_3b_create_merge_tasks
             (((double) work0) / ((double) total_work))) ;
 
         // ensure at least one task is assigned to each partition
-        ntasks0 = LAGRAPH_MAX (ntasks0, 1) ;
-        ntasks0 = LAGRAPH_MIN (ntasks0, ntasks-1) ;
+        ntasks0 = LAGraph_MAX (ntasks0, 1) ;
+        ntasks0 = LAGraph_MIN (ntasks0, ntasks-1) ;
         int ntasks1 = ntasks - ntasks0 ;
 
         //----------------------------------------------------------------------
@@ -339,15 +336,13 @@ static void LG_msort_3b_merge
 // LAGraph_Sort3: parallel mergesort
 //------------------------------------------------------------------------------
 
-int LAGraph_Sort3
+int LAGraph_Sort3    // sort array A of size 3-by-n, using 3 keys (A [0:2][])
 (
-    // input/output:
-    int64_t *A_0,       // size n array
-    int64_t *A_1,       // size n array
-    int64_t *A_2,       // size n array
-    // input:
+    int64_t *LG_RESTRICT A_0,   // size n array
+    int64_t *LG_RESTRICT A_1,   // size n array
+    int64_t *LG_RESTRICT A_2,   // size n array
     const int64_t n,
-    int nthreads,       // # of threads to use
+    int nthreads,               // # of threads to use
     char *msg
 )
 {
@@ -358,9 +353,9 @@ int LAGraph_Sort3
 
     LG_CLEAR_MSG ;
     int64_t *LG_RESTRICT W = NULL ;
-    LG_ASSERT (A_0 != NULL, GrB_NULL_POINTER) ;
-    LG_ASSERT (A_1 != NULL, GrB_NULL_POINTER) ;
-    LG_ASSERT (A_2 != NULL, GrB_NULL_POINTER) ;
+    LG_CHECK (A_0 == NULL, -1, "A_0 is NULL") ;
+    LG_CHECK (A_1 == NULL, -1, "A_1 is NULL") ;
+    LG_CHECK (A_2 == NULL, -1, "A_2 is NULL") ;
 
     //--------------------------------------------------------------------------
     // handle small problems with a single thread
@@ -370,7 +365,7 @@ int LAGraph_Sort3
     {
         // sequential quicksort
         LG_qsort_3 (A_0, A_1, A_2, n) ;
-        return (GrB_SUCCESS) ;
+        return (0) ;
     }
 
     //--------------------------------------------------------------------------
@@ -395,8 +390,8 @@ int LAGraph_Sort3
     // allocate workspace
     //--------------------------------------------------------------------------
 
-    LG_TRY (LAGraph_Malloc ((void **) &W, 3*n + 6*ntasks + 1, sizeof (int64_t),
-        msg)) ;
+    W = LAGraph_Malloc (3*n + 6*ntasks + 1, sizeof (int64_t)) ;
+    LG_CHECK (W == NULL, -1, "out of memory") ;
 
     int64_t *T = W ;
     int64_t *LG_RESTRICT W_0    = T ; T += n ;
@@ -493,6 +488,6 @@ int LAGraph_Sort3
     // free workspace and return result
     //--------------------------------------------------------------------------
 
-    LG_FREE_ALL ;
-    return (GrB_SUCCESS) ;
+    LAGraph_FREE_ALL ;
+    return (0) ;
 }

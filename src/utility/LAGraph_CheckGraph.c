@@ -4,19 +4,15 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University
+// Contributed by Tim Davis, Texas A&M University.
 
 //------------------------------------------------------------------------------
 
 #include "LG_internal.h"
 
-int LAGraph_CheckGraph
+int LAGraph_CheckGraph      // returns 0 if successful, -1 if failure
 (
-    // input/output:
-    LAGraph_Graph G,    // graph to check
+    LAGraph_Graph G,        // graph to check
     char *msg
 )
 {
@@ -25,7 +21,7 @@ int LAGraph_CheckGraph
     // clear the msg and check basic components
     //--------------------------------------------------------------------------
 
-    LG_CLEAR_MSG_AND_BASIC_ASSERT (G, msg) ;
+    LG_CHECK_INIT (G, msg) ;
     GrB_Matrix A = G->A ;
     LAGraph_Kind kind = G->kind ;
 
@@ -34,21 +30,19 @@ int LAGraph_CheckGraph
     //--------------------------------------------------------------------------
 
     GrB_Index nrows, ncols ;
-    if (kind == LAGraph_ADJACENCY_UNDIRECTED ||
-        kind == LAGraph_ADJACENCY_DIRECTED)
+    if (kind == LAGRAPH_ADJACENCY_UNDIRECTED ||
+        kind == LAGRAPH_ADJACENCY_DIRECTED)
     {
-        GRB_TRY (GrB_Matrix_nrows (&nrows, A)) ;
-        GRB_TRY (GrB_Matrix_ncols (&ncols, A)) ;
-        LG_ASSERT_MSG (nrows == ncols, LAGRAPH_INVALID_GRAPH,
-            "adjacency matrix must be square") ;
+        GrB_TRY (GrB_Matrix_nrows (&nrows, A)) ;
+        GrB_TRY (GrB_Matrix_ncols (&ncols, A)) ;
+        LG_CHECK (nrows != ncols, -1101, "adjacency matrix invalid") ;
     }
 
-    #if LAGRAPH_SUITESPARSE
+    #if LG_SUITESPARSE
         // only by-row format is supported when using SuiteSparse
         GxB_Format_Value fmt ;
-        GRB_TRY (GxB_get (A, GxB_FORMAT, &fmt)) ;
-        LG_ASSERT_MSG (fmt == GxB_BY_ROW, LAGRAPH_INVALID_GRAPH,
-            "only by-row format supported") ;
+        GrB_TRY (GxB_get (A, GxB_FORMAT, &fmt)) ;
+        LG_CHECK (fmt != GxB_BY_ROW, -1102, "only by-row format supported") ;
     #endif
 
     //--------------------------------------------------------------------------
@@ -59,55 +53,43 @@ int LAGraph_CheckGraph
     if (AT != NULL)
     {
         GrB_Index nrows2, ncols2;
-        GRB_TRY (GrB_Matrix_nrows (&nrows2, AT)) ;
-        GRB_TRY (GrB_Matrix_ncols (&ncols2, AT)) ;
-        LG_ASSERT_MSG (nrows == ncols2 && ncols == nrows2,
-            LAGRAPH_INVALID_GRAPH, "G->AT matrix has the wrong dimensions") ;
+        GrB_TRY (GrB_Matrix_nrows (&nrows2, AT)) ;
+        GrB_TRY (GrB_Matrix_ncols (&ncols2, AT)) ;
+        LG_CHECK (nrows != ncols2 || ncols != nrows2, -1103,
+            "G->AT matrix invalid") ;
 
-        #if LAGRAPH_SUITESPARSE
+        #if LG_SUITESPARSE
             // only by-row format is supported when using SuiteSparse
             GxB_Format_Value fmt ;
-            GRB_TRY (GxB_get (AT, GxB_FORMAT, &fmt)) ;
-            LG_ASSERT_MSG (fmt == GxB_BY_ROW,
-                LAGRAPH_INVALID_GRAPH, "only by-row format supported") ;
+            GrB_TRY (GxB_get (AT, GxB_FORMAT, &fmt)) ;
+            LG_CHECK (fmt != GxB_BY_ROW, -1104,
+                "only by-row format supported") ;
         #endif
 
         // ensure the types of A and AT are the same
-        char atype [LAGRAPH_MAX_NAME_LEN] ;
-        char ttype [LAGRAPH_MAX_NAME_LEN] ;
-        LG_TRY (LAGraph_Matrix_TypeName (atype, A, msg)) ;
-        LG_TRY (LAGraph_Matrix_TypeName (ttype, AT, msg)) ;
-        LG_ASSERT_MSG (MATCHNAME (atype, ttype),
-            LAGRAPH_INVALID_GRAPH, "A and AT must have the same type") ;
+        LG_CHECK (G->A_type != G->AT_type, -1105,
+            "A and AT types are different") ;
     }
 
     GrB_Vector rowdegree = G->rowdegree ;
     if (rowdegree != NULL)
     {
         GrB_Index m ;
-        GRB_TRY (GrB_Vector_size (&m, rowdegree)) ;
-        LG_ASSERT_MSG (m == nrows, LAGRAPH_INVALID_GRAPH,
-            "rowdegree invalid size") ;
-        char rtype [LAGRAPH_MAX_NAME_LEN] ;
-        LG_TRY (LAGraph_Vector_TypeName (rtype, rowdegree, msg)) ;
-        LG_ASSERT_MSG (MATCHNAME (rtype, "int64_t"),
-            LAGRAPH_INVALID_GRAPH,
-            "rowdegree has wrong type; must be GrB_INT64") ;
+        GrB_TRY (GrB_Vector_size (&m, rowdegree)) ;
+        LG_CHECK (m != nrows, -1106, "rowdegree invalid size") ;
+        LG_CHECK (G->rowdegree_type != GrB_INT64, -1107,
+                  "rowdegree has wrong type") ;
     }
 
     GrB_Vector coldegree = G->coldegree ;
     if (coldegree != NULL)
     {
         GrB_Index n ;
-        GRB_TRY (GrB_Vector_size (&n, coldegree)) ;
-        LG_ASSERT_MSG (n == ncols, LAGRAPH_INVALID_GRAPH,
-            "coldegree invalid size") ;
-        char ctype [LAGRAPH_MAX_NAME_LEN] ;
-        LG_TRY (LAGraph_Vector_TypeName (ctype, coldegree, msg)) ;
-        LG_ASSERT_MSG (MATCHNAME (ctype, "int64_t"),
-            LAGRAPH_INVALID_GRAPH,
-            "coldegree has wrong type; must be GrB_INT64") ;
+        GrB_TRY (GrB_Vector_size (&n, coldegree)) ;
+        LG_CHECK (n != ncols, -1108, "coldegree invalid size") ;
+        LG_CHECK (G->coldegree_type != GrB_INT64, -1109,
+                  "coldegree has wrong type") ;
     }
 
-    return (GrB_SUCCESS) ;
+    return (0) ;
 }

@@ -4,40 +4,35 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University
+// Contributed by Tim Davis, Texas A&M University.
 
 //------------------------------------------------------------------------------
 
 // LAGraph_MMWrite:  write a matrix to a Matrix Market file.
+// Contributed by Tim Davis, Texas A&M.
 
 // Writes a matrix to a file in the Matrix Market format.  See LAGraph_MMRead
 // for a description of the format.
-
-// The Matrix Market format is described at:
-// https://math.nist.gov/MatrixMarket/formats.html
 
 // Parts of this code are from SuiteSparse/CHOLMOD/Check/cholmod_write.c, and
 // are used here by permission of the author of CHOLMOD/Check (T. A. Davis).
 
 #include "LG_internal.h"
 
-#undef  LG_FREE_WORK
-#define LG_FREE_WORK                    \
-{                                       \
-    LAGraph_Free ((void **) &I, NULL) ; \
-    LAGraph_Free ((void **) &J, NULL) ; \
-    LAGraph_Free ((void **) &K, NULL) ; \
-    LAGraph_Free ((void **) &X, NULL) ; \
-    GrB_free (&AT) ;                    \
-    GrB_free (&M) ;                     \
-    GrB_free (&C) ;                     \
+#undef  LAGraph_FREE_WORK
+#define LAGraph_FREE_WORK           \
+{                                   \
+    LAGraph_Free ((void **) &I) ;   \
+    LAGraph_Free ((void **) &J) ;   \
+    LAGraph_Free ((void **) &K) ;   \
+    LAGraph_Free ((void **) &X) ;   \
+    GrB_free (&AT) ;                \
+    GrB_free (&M) ;                 \
+    GrB_free (&C) ;                 \
 }
 
-#undef  LG_FREE_ALL
-#define LG_FREE_ALL LG_FREE_WORK
+#undef  LAGraph_FREE_ALL
+#define LAGraph_FREE_ALL LAGraph_FREE_WORK
 
 //------------------------------------------------------------------------------
 // print_double
@@ -165,13 +160,13 @@ static bool print_double
 }
 
 //------------------------------------------------------------------------------
-// LAGraph_MMWrite: write a matrix to a MatrixMarket file
+// LAGraph_MMWrite_type: write a matrix to a MatrixMarket file with given type
 //------------------------------------------------------------------------------
 
-int LAGraph_MMWrite
+int LAGraph_MMWrite_type
 (
-    // input:
     GrB_Matrix A,       // matrix to write to the file
+    GrB_Type type,      // type to write to the file
     FILE *f,            // file to write it to, must be already open
     FILE *fcomments,    // optional file with extra comments, may be NULL
     char *msg
@@ -186,17 +181,17 @@ int LAGraph_MMWrite
     void *X = NULL ;
     GrB_Index *I = NULL, *J = NULL, *K = NULL ;
     GrB_Matrix M = NULL, AT = NULL, C = NULL ;
-    LG_ASSERT (A != NULL, GrB_NULL_POINTER) ;
-    LG_ASSERT (f != NULL, GrB_NULL_POINTER) ;
+    LG_CHECK (A == NULL || f == NULL || type == NULL, -1001,
+        "inputs are NULL") ;
 
     //--------------------------------------------------------------------------
     // determine the basic matrix properties
     //--------------------------------------------------------------------------
 
     GrB_Index nrows, ncols, nvals ;
-    GRB_TRY (GrB_Matrix_nrows (&nrows, A)) ;
-    GRB_TRY (GrB_Matrix_ncols (&ncols, A)) ;
-    GRB_TRY (GrB_Matrix_nvals (&nvals, A)) ;
+    GrB_TRY (GrB_Matrix_nrows (&nrows, A)) ;
+    GrB_TRY (GrB_Matrix_ncols (&ncols, A)) ;
+    GrB_TRY (GrB_Matrix_nvals (&nvals, A)) ;
     GrB_Index n = nrows ;
 
     //--------------------------------------------------------------------------
@@ -216,11 +211,6 @@ int LAGraph_MMWrite
     // determine the entry type
     //--------------------------------------------------------------------------
 
-    GrB_Type type ;
-    char atype_name [LAGRAPH_MAX_NAME_LEN] ;
-    LG_TRY (LAGraph_Matrix_TypeName (atype_name, A, msg)) ;
-    LG_TRY (LAGraph_TypeFromName (&type, atype_name, msg)) ;
-
     MM_type_enum MM_type = MM_integer ;
 
     if (type == GrB_BOOL   || type == GrB_INT8   || type == GrB_INT16  ||
@@ -234,16 +224,15 @@ int LAGraph_MMWrite
         MM_type = MM_real ;
     }
     #if 0
-    #if LAGRAPH_SUITESPARSE
     else if (type == GxB_FC32 || type == GxB_FC64)
     {
         MM_type = MM_complex ;
     }
     #endif
-    #endif
     else
     {
-        LG_ASSERT_MSG (false, GrB_NOT_IMPLEMENTED, "type not supported") ;
+        // type not supported
+        LG_CHECK (true, -1006, "unsupported matrix type") ;
     }
 
     //--------------------------------------------------------------------------
@@ -255,15 +244,15 @@ int LAGraph_MMWrite
     if (nrows == ncols)
     {
         // AT = A'
-        GRB_TRY (GrB_Matrix_new (&AT, type, n, n)) ;
-        GRB_TRY (GrB_transpose (AT, NULL, NULL, A, NULL)) ;
+        GrB_TRY (GrB_Matrix_new (&AT, type, n, n)) ;
+        GrB_TRY (GrB_transpose (AT, NULL, NULL, A, NULL)) ;
 
         //----------------------------------------------------------------------
         // check for symmetry
         //----------------------------------------------------------------------
 
         bool isequal = false ;
-        LG_TRY (LAGraph_Matrix_IsEqual (&isequal, A, AT, msg)) ;
+        LAGraph_TRY (LAGraph_IsEqual (&isequal, A, AT, msg)) ;
         if (isequal)
         {
             MM_storage = MM_symmetric ;
@@ -290,8 +279,8 @@ int LAGraph_MMWrite
             #endif
             if (op != NULL)
             {
-                GRB_TRY (GrB_apply (AT, NULL, NULL, op, AT, NULL)) ;
-                LG_TRY (LAGraph_Matrix_IsEqual (&isequal, A, AT, msg)) ;
+                GrB_TRY (GrB_apply (AT, NULL, NULL, op, AT, NULL)) ;
+                LAGraph_TRY (LAGraph_IsEqual (&isequal, A, AT, msg)) ;
                 if (isequal)
                 {
                     MM_storage = MM_skew_symmetric ;
@@ -306,7 +295,7 @@ int LAGraph_MMWrite
         #if 0
         if (MM_type == MM_complex && MM_storage == MM_general)
         {
-            LG_TRY (LAGraph_isall (&isequal, A, AT,
+            LAGraph_TRY (LAGraph_isall (&isequal, A, AT,
                 LAGraph_HERMITIAN_ComplexFP64)) ;
             if (isequal)
             {
@@ -327,12 +316,12 @@ int LAGraph_MMWrite
     {
         if (type == GrB_BOOL)
         {
-            GRB_TRY (GrB_reduce (&is_structural, NULL, GrB_LAND_MONOID_BOOL,
+            LAGraph_TRY (GrB_reduce (&is_structural, NULL, GrB_LAND_MONOID_BOOL,
                 A, NULL)) ;
         }
         else
         {
-            GRB_TRY (GrB_Matrix_new (&C, GrB_BOOL, nrows, ncols)) ;
+            GrB_TRY (GrB_Matrix_new (&C, GrB_BOOL, nrows, ncols)) ;
             GrB_BinaryOp op = NULL ;
             if      (type == GrB_INT8  ) op = GrB_EQ_INT8   ;
             else if (type == GrB_INT16 ) op = GrB_EQ_INT16  ;
@@ -348,8 +337,8 @@ int LAGraph_MMWrite
             else if (type == GxB_FC32  ) op = GrB_EQ_FC32 ;
             else if (type == GxB_FC64  ) op = GrB_EQ_FC64 ;
             #endif
-            GRB_TRY (GrB_apply (C, NULL, NULL, op, A, 1, NULL)) ;
-            GRB_TRY (GrB_reduce (&is_structural, NULL, GrB_LAND_MONOID_BOOL,
+            GrB_TRY (GrB_apply (C, NULL, NULL, op, A, 1, NULL)) ;
+            GrB_TRY (GrB_reduce (&is_structural, NULL, GrB_LAND_MONOID_BOOL,
                 C, NULL)) ;
             GrB_free (&C) ;
         }
@@ -390,24 +379,7 @@ int LAGraph_MMWrite
 //      case MM_hermitian       : FPRINTF (f, " Hermitian\n")       ; break ;
     }
 
-    FPRINTF (f, "%%%%GraphBLAS type ") ;
-    if      (type == GrB_BOOL  ) { FPRINTF (f, "bool\n")   ; }
-    else if (type == GrB_INT8  ) { FPRINTF (f, "int8_t\n")   ; }
-    else if (type == GrB_INT16 ) { FPRINTF (f, "int16_t\n")  ; }
-    else if (type == GrB_INT32 ) { FPRINTF (f, "int32_t\n")  ; }
-    else if (type == GrB_INT64 ) { FPRINTF (f, "int64_t\n")  ; }
-    else if (type == GrB_UINT8 ) { FPRINTF (f, "uint8_t\n")  ; }
-    else if (type == GrB_UINT16) { FPRINTF (f, "uint16_t\n") ; }
-    else if (type == GrB_UINT32) { FPRINTF (f, "uint32_t\n") ; }
-    else if (type == GrB_UINT64) { FPRINTF (f, "uint64_t\n") ; }
-    else if (type == GrB_FP32  ) { FPRINTF (f, "float\n")   ; }
-    else if (type == GrB_FP64  ) { FPRINTF (f, "double\n")   ; }
-    #if 0
-    else if (type == GxB_FC32  ) { FPRINTF (f, "float complex\n")  ; }
-    else if (type == GxB_FC64  ) { FPRINTF (f, "double complex\n") ; }
-    #endif
-
-#if 0
+    FPRINTF (f, "%%%%GraphBLAS ") ;
     if      (type == GrB_BOOL  ) { FPRINTF (f, "GrB_BOOL\n")   ; }
     else if (type == GrB_INT8  ) { FPRINTF (f, "GrB_INT8\n")   ; }
     else if (type == GrB_INT16 ) { FPRINTF (f, "GrB_INT16\n")  ; }
@@ -423,7 +395,6 @@ int LAGraph_MMWrite
     else if (type == GxB_FC32  ) { FPRINTF (f, "GxB_FC32\n")   ; }
     else if (type == GxB_FC64  ) { FPRINTF (f, "GxB_FC64\n")   ; }
     #endif
-#endif
 
     //--------------------------------------------------------------------------
     // include any additional comments
@@ -449,7 +420,7 @@ int LAGraph_MMWrite
     {
         // count the entries on the diagonal
         int64_t ndiag = 0 ;
-        LG_TRY (LG_ndiag (&ndiag, A, msg)) ;
+        LAGraph_TRY (LG_ndiag (&ndiag, A, type, msg)) ;
         // nvals_to_print = # of entries in tril(A), including diagonal
         nvals_to_print = ndiag + (nvals - ndiag) / 2 ;
     }
@@ -460,23 +431,24 @@ int LAGraph_MMWrite
     if (nvals_to_print == 0)
     {
         // quick return if nothing more to do
-        LG_FREE_ALL ;
-        return (GrB_SUCCESS) ;
+        LAGraph_FREE_ALL ;
+        return (0) ;
     }
 
     //--------------------------------------------------------------------------
     // extract and print tuples
     //--------------------------------------------------------------------------
 
-    LG_TRY (LAGraph_Malloc ((void **) &I, nvals, sizeof (GrB_Index), msg)) ;
-    LG_TRY (LAGraph_Malloc ((void **) &J, nvals, sizeof (GrB_Index), msg)) ;
-    LG_TRY (LAGraph_Malloc ((void **) &K, nvals, sizeof (GrB_Index), msg)) ;
+    I = LAGraph_Malloc (nvals, sizeof (GrB_Index)) ;
+    J = LAGraph_Malloc (nvals, sizeof (GrB_Index)) ;
+    K = LAGraph_Malloc (nvals, sizeof (GrB_Index)) ;
+    LG_CHECK (I == NULL || J == NULL || K == NULL, -1004, "out of memory") ;
     for (int64_t k = 0 ; k < nvals ; k++)
     {
         K [k] = k ;
     }
     int nthreads ;
-    LG_TRY (LAGraph_GetNumThreads (&nthreads, msg)) ;
+    LAGraph_TRY (LAGraph_GetNumThreads (&nthreads, msg)) ;
 
     GrB_Index nvals_printed = 0 ;
     bool coord = (MM_fmt == MM_coordinate) ;
@@ -484,9 +456,10 @@ int LAGraph_MMWrite
     #define WRITE_TUPLES(ctype,is_unsigned,is_signed,is_real,is_complex)    \
     {                                                                       \
         ctype *X = NULL ;                                                   \
-        LG_TRY (LAGraph_Malloc ((void **) &X, nvals, sizeof (ctype), msg)) ;\
-        GRB_TRY (GrB_Matrix_extractTuples (I, J, X, &nvals, A)) ;           \
-        LG_TRY (LAGraph_Sort3 ((int64_t *) J, (int64_t *) I,                \
+        X = LAGraph_Malloc (nvals, sizeof (ctype)) ;                        \
+        LG_CHECK (X == NULL, -1010, "out of memory") ;                      \
+        GrB_TRY (GrB_Matrix_extractTuples (I, J, X, &nvals, A)) ;           \
+        LAGraph_TRY (LAGraph_Sort3 ((int64_t *) J, (int64_t *) I,           \
             (int64_t *) K, nvals, nthreads, msg)) ;                         \
         for (int64_t k = 0 ; k < nvals ; k++)                               \
         {                                                                   \
@@ -513,24 +486,22 @@ int LAGraph_MMWrite
                 }                                                           \
                 else if (is_real)                                           \
                 {                                                           \
-                    LG_ASSERT_MSG (print_double (f, (double) x),            \
-                        LAGRAPH_IO_ERROR, "Unable to write to file") ;      \
+                    LG_CHECK (!print_double (f, (double) x), -1002,         \
+                        "Unable to write to file") ;                        \
                 }                                                           \
             /*  else if (is_complex)                                 */     \
             /*  {                                                    */     \
-            /*      LG_ASSERT_MSG (print_double (f, creal (x)),      */     \
-            /*          LAGRAPH_IO_ERROR,                            */     \
+            /*      LG_CHECK (!print_double (f, creal (x)), -1002,   */     \
             /*          "Unable to write to file") ;                 */     \
             /*      FPRINTF (f, " ") ;                               */     \
-            /*      LG_ASSERT_MSG (print_double (f, cimag (x)),      */     \
-            /*          LAGRAPH_IO_ERROR,                            */     \
+            /*      LG_CHECK (!print_double (f, cimag (x)), -1002,   */     \
             /*          "Unable to write to file") ;                 */     \
             /*  }                                                    */     \
                 FPRINTF (f, "\n") ;                                         \
             }                                                               \
             nvals_printed++ ;                                               \
         }                                                                   \
-        LG_TRY (LAGraph_Free ((void **) &X, NULL)) ;                        \
+        LAGraph_Free ((void **) &X) ;                                       \
     }
 
     if      (type == GrB_BOOL   ) WRITE_TUPLES (bool    , 1, 0, 0, 0)
@@ -555,7 +526,50 @@ int LAGraph_MMWrite
     // free workspace and return
     //--------------------------------------------------------------------------
 
-    LG_FREE_ALL ;
-    return (GrB_SUCCESS) ;
+    LAGraph_FREE_ALL ;
+    return (0) ;
+}
+
+//------------------------------------------------------------------------------
+// LAGraph_MMWrite: write a matrix to a MatrixMarket file, auto select type
+//------------------------------------------------------------------------------
+
+#undef  LAGraph_FREE_WORK
+#define LAGraph_FREE_WORK ;
+
+int LAGraph_MMWrite
+(
+    GrB_Matrix A,       // matrix to write to the file
+    FILE *f,            // file to write it to, must be already open
+    FILE *fcomments,    // optional file with extra comments, may be NULL
+    char *msg
+)
+{
+
+    //--------------------------------------------------------------------------
+    // check inputs
+    //--------------------------------------------------------------------------
+
+    LG_CLEAR_MSG ;
+    LG_CHECK (A == NULL || f == NULL, -1001, "inputs are NULL") ;
+
+    //--------------------------------------------------------------------------
+    // determine the type
+    //--------------------------------------------------------------------------
+
+    GrB_Type type ;
+    #if LG_SUITESPARSE
+        // SuiteSparse:GraphBLAS: query the type and print accordingly
+        GrB_TRY (GxB_Matrix_type (&type, A)) ;
+    #else
+        // no way to determine the type with pure GrB*; print as if FP64
+        type = GrB_FP64 ;
+    #endif
+
+    //--------------------------------------------------------------------------
+    // write the matrix
+    //--------------------------------------------------------------------------
+
+    return (LAGraph_MMWrite_type (A, type, f, fcomments, msg)) ;
 }
 

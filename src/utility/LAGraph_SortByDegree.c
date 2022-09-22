@@ -4,10 +4,7 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University
+// Contributed by Tim Davis, Texas A&M University.
 
 //------------------------------------------------------------------------------
 
@@ -33,26 +30,26 @@
 // the permutation (or P [k] = j if column j is the kth column in the
 // permutation, with byrow false).
 
-#define LG_FREE_WORK                    \
-{                                       \
-    LAGraph_Free ((void **) &W, NULL) ; \
-    LAGraph_Free ((void **) &D, NULL) ; \
+#define LAGraph_FREE_WORK           \
+{                                   \
+    LAGraph_Free ((void **) &W) ;   \
+    LAGraph_Free ((void **) &D) ;   \
 }
 
-#define LG_FREE_ALL                     \
-{                                       \
-    LG_FREE_WORK ;                      \
-    LAGraph_Free ((void **) &P, NULL) ; \
+#define LAGraph_FREE_ALL            \
+{                                   \
+    LAGraph_FREE_WORK ;             \
+    LAGraph_Free ((void **) &P) ;   \
 }
 
 #include "LG_internal.h"
 
-int LAGraph_SortByDegree
+int LAGraph_SortByDegree    // returns 0 if successful, -1 if failure
 (
-    // output:
+    // output
     int64_t **P_handle,     // P is returned as a permutation vector of size n
-    // input:
-    const LAGraph_Graph G,  // graph of n nodes
+    // input
+    LAGraph_Graph G,        // graph of n nodes
     bool byrow,             // if true, sort G->rowdegree, else G->coldegree
     bool ascending,         // sort in ascending or descending order
     char *msg
@@ -67,15 +64,15 @@ int LAGraph_SortByDegree
     int64_t *P = NULL ;
     int64_t *W = NULL ;
     int64_t *D = NULL ;
-    LG_ASSERT_MSG (P_handle != NULL, GrB_NULL_POINTER, "&P != NULL") ;
+    LG_CHECK (P_handle == NULL, -1, "P is null") ;
     (*P_handle) = NULL ;
-    LG_TRY (LAGraph_CheckGraph (G, msg)) ;
+    LG_CHECK (LAGraph_CheckGraph (G, msg), -1, "graph is invalid") ;
 
     GrB_Vector Degree ;
 
-    if (G->kind == LAGraph_ADJACENCY_UNDIRECTED ||
-       (G->kind == LAGraph_ADJACENCY_DIRECTED &&
-        G->structure_is_symmetric == LAGraph_TRUE))
+    if (G->kind == LAGRAPH_ADJACENCY_UNDIRECTED ||
+       (G->kind == LAGRAPH_ADJACENCY_DIRECTED &&
+        G->A_structure_is_symmetric == LAGRAPH_TRUE))
     {
         // the structure of A is known to be symmetric
         Degree = G->rowdegree ;
@@ -86,29 +83,29 @@ int LAGraph_SortByDegree
         Degree = (byrow) ? G->rowdegree : G->coldegree ;
     }
 
-    LG_ASSERT_MSG (Degree != NULL,
-        LAGRAPH_PROPERTY_MISSING, "degree property unknown") ;
+    LG_CHECK (Degree == NULL, -1, "degree property unknown") ;
 
     //--------------------------------------------------------------------------
     // decide how many threads to use
     //--------------------------------------------------------------------------
 
     GrB_Index n ;
-    GRB_TRY (GrB_Vector_size (&n, Degree)) ;
+    GrB_TRY (GrB_Vector_size (&n, Degree)) ;
 
     #define CHUNK (64*1024)
     int nthreads ;
-    LG_TRY (LAGraph_GetNumThreads (&nthreads, msg)) ;
-    nthreads = LAGRAPH_MIN (nthreads, n/CHUNK) ;
-    nthreads = LAGRAPH_MAX (nthreads, 1) ;
+    LAGraph_TRY (LAGraph_GetNumThreads (&nthreads, msg)) ;
+    nthreads = LAGraph_MIN (nthreads, n/CHUNK) ;
+    nthreads = LAGraph_MAX (nthreads, 1) ;
 
     //--------------------------------------------------------------------------
     // allocate result and workspace
     //--------------------------------------------------------------------------
 
-    LG_TRY (LAGraph_Malloc ((void **) &P, n, sizeof (int64_t), msg)) ;
-    LG_TRY (LAGraph_Malloc ((void **) &D, n, sizeof (int64_t), msg)) ;
-    LG_TRY (LAGraph_Malloc ((void **) &W, 2*n, sizeof (int64_t), msg)) ;
+    P = LAGraph_Malloc (n, sizeof (int64_t)) ;
+    D = LAGraph_Malloc (n, sizeof (int64_t)) ;
+    W = LAGraph_Malloc (2*n, sizeof (int64_t)) ;
+    LG_CHECK (D == NULL || P == NULL || W == NULL, -1, "out of memory") ;
     int64_t *W0 = W ;
     int64_t *W1 = W + n ;
 
@@ -125,7 +122,7 @@ int LAGraph_SortByDegree
 
     // extract the degrees
     GrB_Index nvals = n ;
-    GRB_TRY (GrB_Vector_extractTuples ((GrB_Index *) W0, W1, &nvals, Degree)) ;
+    GrB_TRY (GrB_Vector_extractTuples ((GrB_Index *) W0, W1, &nvals, Degree)) ;
 
     if (ascending)
     {
@@ -146,19 +143,19 @@ int LAGraph_SortByDegree
         }
     }
 
-    LG_TRY (LAGraph_Free ((void **) &W, NULL)) ;
+    LAGraph_Free ((void **) &W) ;
 
     //--------------------------------------------------------------------------
     // sort by degrees, with ties by node id
     //--------------------------------------------------------------------------
 
-    LG_TRY (LAGraph_Sort2 (D, P, n, nthreads, msg)) ;
+    LAGraph_TRY (LAGraph_Sort2 (D, P, n, nthreads, msg)) ;
 
     //--------------------------------------------------------------------------
     // free workspace and return result
     //--------------------------------------------------------------------------
 
-    LG_FREE_WORK ;
+    LAGraph_FREE_WORK ;
     (*P_handle) = P ;
-    return (GrB_SUCCESS) ;
+    return (0) ;
 }

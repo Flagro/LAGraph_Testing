@@ -4,10 +4,11 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
+//
 // See additional acknowledgments in the LICENSE file,
 // or contact permission@sei.cmu.edu for the full terms.
 
-// Contributed by Timothy A. Davis, Texas A&M University
+// Contributed by Tim Davis, Texas A&M University.
 
 //------------------------------------------------------------------------------
 
@@ -21,7 +22,6 @@
 //------------------------------------------------------------------------------
 
 #define LG_LIBRARY
-#include <ctype.h>
 #include "LAGraph.h"
 
 #if defined ( __linux__ )
@@ -36,13 +36,6 @@
 
 #define LG_XSTR(x) LG_STR(x)
 #define LG_STR(x) #x
-
-//------------------------------------------------------------------------------
-// string matching
-//------------------------------------------------------------------------------
-
-#define MATCH(s1,s2,n) (strncmp (s1, s2, n) == 0)
-#define MATCHNAME(s1,s2) MATCH (s1, s2, LAGRAPH_MAX_NAME_LEN)
 
 //------------------------------------------------------------------------------
 // typedefs
@@ -66,17 +59,15 @@ typedef unsigned char LG_void ;
 //------------------------------------------------------------------------------
 
 // When an LAGraph method encounters an error, it can report details in the
-// msg.  This is normally done via LG_ASSERT_MSG.  For example:
+// msg.  For example:
 
 /*
     if (src < 0 || src >= n)
     {
         LG_ERROR_MSG ("Source node %ld must be in range 0 to n-1, "
             "where n = %ld is the number of nodes in the graph.", src, n) ;
-        return (GrB_INVALID_INDEX) ;
+        return (-1) ;
     }
-    // or, with a simpler message:
-    LG_ASSERT_MSG (src >= 0 && src < n, GrB_INVALID_INDEX, "invalid src node") ;
 */
 
 #define LG_ERROR_MSG(...)                                           \
@@ -88,146 +79,96 @@ typedef unsigned char LG_void ;
 }
 
 //------------------------------------------------------------------------------
-// LG_FREE_WORK: free all workspace
+// LAGraph_FREE_WORK: free all workspace
 //------------------------------------------------------------------------------
 
-#ifndef LG_FREE_WORK
-#define LG_FREE_WORK ;
+#ifndef LAGraph_FREE_WORK
+#define LAGraph_FREE_WORK ;
 #endif
 
 //------------------------------------------------------------------------------
-// LG_FREE_ALL: free all workspace and all output arguments, on error
+// LAGraph_FREE_ALL: free all workspace and all output arguments, on error
 //------------------------------------------------------------------------------
 
-#ifndef LG_FREE_ALL
-#define LG_FREE_ALL             \
+#ifndef LAGraph_FREE_ALL
+#define LAGraph_FREE_ALL        \
 {                               \
-    LG_FREE_WORK ;              \
+    LAGraph_FREE_WORK ;         \
 }
 #endif
 
 //------------------------------------------------------------------------------
-// GRB_CATCH: catch an error from GraphBLAS
+// GrB_CATCH: catch an error from GraphBLAS
 //------------------------------------------------------------------------------
 
-// A simple GRB_CATCH macro to be used by GRB_TRY.  If an LAGraph function
-// wants something else, then #define a GRB_CATCH macro before the #include
+// A simple GrB_CATCH macro to be used by GrB_TRY.  If an LAGraph function
+// wants something else, then #define a GrB_CATCH macro before the #include
 // "LG_internal.h" statement.
 
-#ifndef GRB_CATCH
-#define GRB_CATCH(info)                                                 \
-{                                                                       \
-    LG_ERROR_MSG ("GraphBLAS failure (file %s, line %d): info: %d",     \
-        __FILE__, __LINE__, info) ;                                     \
-    LG_FREE_ALL ;                                                       \
-    return (info) ;                                                     \
-}
+#ifndef GrB_CATCH
+
+    #define GrB_CATCH(info)                                 \
+    {                                                       \
+        LG_ERROR_MSG ("%s, line %d: GrB failure: %d",       \
+            __FILE__, __LINE__, info) ;                     \
+        LAGraph_FREE_ALL ;                                  \
+        return (info) ;                                     \
+    }
+
 #endif
 
 //------------------------------------------------------------------------------
-// LAGRAPH_CATCH: catch an error from LAGraph
+// LAGraph_CATCH: catch an error from LAGraph
 //------------------------------------------------------------------------------
 
-// A simple LAGRAPH_CATCH macro to be used by LAGRAPH_TRY.  If an LAGraph
-// function wants something else, then #define a LAGRAPH_CATCH macro before the
+// A simple LAGraph_CATCH macro to be used by LAGraph_TRY.  If an LAGraph
+// function wants something else, then #define a LAGraph_CATCH macro before the
 // #include "LG_internal.h" statement.
 
-#ifndef LAGRAPH_CATCH
-#define LAGRAPH_CATCH(status)                                           \
-{                                                                       \
-    LG_ERROR_MSG ("LAGraph failure (file %s, line %d): status: %d",     \
-        __FILE__, __LINE__, status) ;                                   \
-    LG_FREE_ALL ;                                                       \
-    return (status) ;                                                   \
+#ifndef LAGraph_CATCH
+#define LAGraph_CATCH(status)                           \
+{                                                       \
+    LG_ERROR_MSG ("%s, line %d: LAGraph failure: %d",   \
+        __FILE__, __LINE__, status) ;                   \
+    LAGraph_FREE_ALL ;                                  \
+    return (status) ;                                   \
 }
 #endif
 
 //------------------------------------------------------------------------------
-// LG_ASSERT_MSGF: assert an expression is true, and return if it is false
+// LG_CHECK: check an error condition
 //------------------------------------------------------------------------------
 
-// Identical to LG_ASSERT_MSG, except this allows a printf-style formatted
-// message.
-
-#define LG_ASSERT_MSGF(expression,error_status,expression_format,...)   \
-{                                                                       \
-    if (!(expression))                                                  \
-    {                                                                   \
-        LG_ERROR_MSG ("LAGraph failure (file %s, line %d): "            \
-            expression_format, __FILE__, __LINE__, __VA_ARGS__) ;       \
-        LG_FREE_ALL ;                                                   \
-        return (error_status) ;                                         \
-    }                                                                   \
+#define LG_CHECK(error_condition,error_status,...)      \
+{                                                       \
+    if (error_condition)                                \
+    {                                                   \
+        LG_ERROR_MSG (__VA_ARGS__) ;                    \
+        LAGraph_FREE_ALL ;                              \
+        return (error_status) ;                         \
+    }                                                   \
 }
 
 //------------------------------------------------------------------------------
-// LG_ASSERT_MSG: assert an expression is true, and return if it is false
+// LG_CHECK_INIT: clear msg and do basic tests of a graph
 //------------------------------------------------------------------------------
 
-// Identical to LG_ASSERT, except this allows a different string to be
-// included in the message.
-
-#define LG_ASSERT_MSG(expression,error_status,expression_message)       \
-    LG_ASSERT_MSGF (expression,error_status,"%s",expression_message)
-
-//------------------------------------------------------------------------------
-// LG_ASSERT: assert an expression is true, and return if it is false
-//------------------------------------------------------------------------------
-
-// LAGraph methods can use this assertion macro for simple errors.
-
-#define LG_ASSERT(expression, error_status)                                 \
-{                                                                           \
-    if (!(expression))                                                      \
-    {                                                                       \
-        LG_ERROR_MSG ("LAGraph assertion \"%s\" failed (file %s, line %d):" \
-            " status: %d", LG_XSTR(expression), __FILE__, __LINE__,         \
-            error_status) ;                                                 \
-        LG_FREE_ALL ;                                                       \
-        return (error_status) ;                                             \
-    }                                                                       \
-}
-
-//------------------------------------------------------------------------------
-// LG_TRY: check a condition and return on error
-//------------------------------------------------------------------------------
-
-// The msg is not modified.  This should be used when an LAGraph method calls
-// another one.
-
-#define LG_TRY(LAGraph_method)                  \
-{                                               \
-    int LAGraph_status = LAGraph_method ;       \
-    if (LAGraph_status < 0)                     \
-    {                                           \
-        LG_FREE_ALL ;                           \
-        return (LAGraph_status) ;               \
-    }                                           \
-}
-
-//------------------------------------------------------------------------------
-// LG_CLEAR_MSG_AND_BASIC_ASSERT: clear msg and do basic tests of a graph
-//------------------------------------------------------------------------------
-
-#define LG_CLEAR_MSG_AND_BASIC_ASSERT(G,msg)                                \
+#define LG_CHECK_INIT(G,msg)                                                \
 {                                                                           \
     LG_CLEAR_MSG ;                                                          \
-    LG_ASSERT (G != NULL, GrB_NULL_POINTER) ;                               \
-    LG_ASSERT_MSG (G->A != NULL, LAGRAPH_INVALID_GRAPH,                     \
-        "graph adjacency matrix is NULL") ;                                 \
-    LG_ASSERT_MSG (G->kind >= LAGraph_ADJACENCY_UNDIRECTED &&               \
-        G->kind <= LAGraph_ADJACENCY_DIRECTED,                              \
-        LAGRAPH_INVALID_GRAPH, "graph kind invalid") ;                      \
+    LG_CHECK (G == NULL, GrB_NULL_POINTER, "graph is NULL") ;               \
+    LG_CHECK (G->A == NULL, -1102, "graph adjacency matrix is NULL") ;      \
+    LG_CHECK (G->kind <= LAGRAPH_UNKNOWN ||                                 \
+        G->kind > LAGRAPH_ADJACENCY_DIRECTED, -1103, "graph kind invalid") ;\
 }
 
 //------------------------------------------------------------------------------
 // FPRINTF: fprintf and check result
 //------------------------------------------------------------------------------
 
-#define FPRINTF(f,...)                                                      \
-{                                                                           \
-    LG_ASSERT_MSG (fprintf (f, __VA_ARGS__) >= 0,                           \
-        LAGRAPH_IO_ERROR, "Unable to write to file") ;                      \
+#define FPRINTF(f,...)                  \
+{                                       \
+    LG_CHECK (fprintf (f, __VA_ARGS__) < 0, -2, "Unable to write to file") ; \
 }
 
 //------------------------------------------------------------------------------
@@ -294,7 +235,7 @@ static bool LG_Multiply_size_t  // true if ok, false if overflow
     }
 
     // a + b is now safe to compute
-    if ((a + b) > (SIZE_MAX / LAGRAPH_MIN (a,b)))
+    if ((a + b) > (SIZE_MAX / LAGraph_MIN (a,b)))
     {
         // a * b may overflow
         return (false) ;
@@ -505,26 +446,14 @@ void LG_qsort_3     // sort array A of size 3-by-n, using 3 keys (A [0:2][])
 // count entries on the diagonal of a matrix
 //------------------------------------------------------------------------------
 
-int LG_ndiag
+int LG_ndiag                // returns 0 if successful, < 0 if failure
 (
     // output
     int64_t *ndiag,         // # of entries
     // input
     GrB_Matrix A,           // matrix to count
+    GrB_Type atype,         // type of A
     char *msg               // error message
 ) ;
-
-//------------------------------------------------------------------------------
-// simple and portable random number generator (internal use only)
-//------------------------------------------------------------------------------
-
-#define LG_RANDOM15_MAX 32767
-#define LG_RANDOM60_MAX ((1ULL << 60) -1)
-
-// return a random number between 0 and LG_RANDOM15_MAX
-GrB_Index LG_Random15 (uint64_t *seed) ;
-
-// return a random uint64_t, in range 0 to LG_RANDOM60_MAX
-GrB_Index LG_Random60 (uint64_t *seed) ;
 
 #endif

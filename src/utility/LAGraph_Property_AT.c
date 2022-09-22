@@ -4,21 +4,17 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University
+// Contributed by Tim Davis, Texas A&M University.
 
 //------------------------------------------------------------------------------
 
-#define LG_FREE_ALL GrB_free (&AT) ;
+#define LAGraph_FREE_ALL GrB_free (&AT) ;
 
 #include "LG_internal.h"
 
-int LAGraph_Property_AT
+int LAGraph_Property_AT     // returns 0 if successful, -1 if failure
 (
-    // input/output:
-    LAGraph_Graph G,    // graph for which to compute G->AT
+    LAGraph_Graph G,        // graph to compute G->AT for
     char *msg
 )
 {
@@ -28,30 +24,28 @@ int LAGraph_Property_AT
     //--------------------------------------------------------------------------
 
     GrB_Matrix AT = NULL ;
-    LG_CLEAR_MSG_AND_BASIC_ASSERT (G, msg) ;
+    LG_CHECK_INIT (G, msg) ;
     GrB_Matrix A = G->A ;
     LAGraph_Kind kind = G->kind ;
 
-    if (G->AT != NULL || kind == LAGraph_ADJACENCY_UNDIRECTED)
+    if (G->AT != NULL || kind == LAGRAPH_ADJACENCY_UNDIRECTED)
     {
         // G->AT already computed, or not needed since A is symmetric
-        return (GrB_SUCCESS) ;
+        return (0) ;
     }
 
     //--------------------------------------------------------------------------
     // G->AT = (G->A)'
     //--------------------------------------------------------------------------
 
+    GrB_Type type ;
     GrB_Index nrows, ncols ;
-    GRB_TRY (GrB_Matrix_nrows (&nrows, A)) ;
-    GRB_TRY (GrB_Matrix_ncols (&ncols, A)) ;
-    GrB_Type atype ;
-    char atype_name [LAGRAPH_MAX_NAME_LEN] ;
-    LG_TRY (LAGraph_Matrix_TypeName (atype_name, A, msg)) ;
-    LG_TRY (LAGraph_TypeFromName (&atype, atype_name, msg)) ;
-    GRB_TRY (GrB_Matrix_new (&AT, atype, ncols, nrows)) ;
-    GRB_TRY (GrB_transpose (AT, NULL, NULL, A, NULL)) ;
+    GrB_TRY (GrB_Matrix_nrows (&nrows, A)) ;
+    GrB_TRY (GrB_Matrix_ncols (&ncols, A)) ;
+    GrB_TRY (GrB_Matrix_new (&AT, G->A_type, ncols, nrows)) ;
+    GrB_TRY (GrB_transpose (AT, NULL, NULL, A, NULL)) ;
     G->AT = AT ;
+    G->AT_type = G->A_type;
 
-    return (GrB_SUCCESS) ;
+    return (0) ;
 }

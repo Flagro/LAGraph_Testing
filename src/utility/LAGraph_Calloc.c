@@ -4,35 +4,24 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University
+// Contributed by Tim Davis, Texas A&M University.
 
 //------------------------------------------------------------------------------
 
 #include "LG_internal.h"
 
-int LAGraph_Calloc
+void *LAGraph_Calloc
 (
-    // output:
-    void **p,               // pointer to allocated block of memory
-    // input:
     size_t nitems,          // number of items
-    size_t size_of_item,    // size of each item
-    char *msg
+    size_t size_of_item     // size of each item
 )
 {
-    // check inputs
-    LG_CLEAR_MSG ;
-    LG_ASSERT (p != NULL, GrB_NULL_POINTER) ;
-    (*p) = NULL ;
 
     // make sure at least one item is allocated
-    nitems = LAGRAPH_MAX (1, nitems) ;
+    nitems = LAGraph_MAX (1, nitems) ;
 
     // make sure at least one byte is allocated
-    size_of_item = LAGRAPH_MAX (1, size_of_item) ;
+    size_of_item = LAGraph_MAX (1, size_of_item) ;
 
     // compute the size and check for integer overflow
     size_t size ;
@@ -40,18 +29,24 @@ int LAGraph_Calloc
     if (!ok || nitems > GrB_INDEX_MAX || size_of_item > GrB_INDEX_MAX)
     {
         // overflow
-        return (GrB_OUT_OF_MEMORY) ;
+        return (NULL) ;
     }
 
-    if (LAGraph_Calloc_function == NULL)
+    // calloc the space
+    void *p = NULL ;
+    if (LAGraph_Calloc_function != NULL)
+    {
+        // use the calloc function
+        p = LAGraph_Calloc_function (nitems, size_of_item) ;
+    }
+    else
     {
         // calloc function not available; use malloc and memset
-        LG_TRY (LAGraph_Malloc (p, nitems, size_of_item, msg)) ;
-        memset (*p, 0, size) ;
-        return (GrB_SUCCESS) ;
+        p = LAGraph_Malloc (nitems, size_of_item) ;
+        if (p != NULL)
+        {
+            memset (p, 0, size) ;
+        }
     }
-
-    // use the calloc function
-    (*p) = LAGraph_Calloc_function (nitems, size_of_item) ;
-    return (((*p) == NULL) ? GrB_OUT_OF_MEMORY : GrB_SUCCESS) ;
+    return (p) ;
 }

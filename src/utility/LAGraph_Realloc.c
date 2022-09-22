@@ -4,10 +4,7 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University
+// Contributed by Tim Davis, Texas A&M University.
 
 //------------------------------------------------------------------------------
 
@@ -20,48 +17,42 @@
 
 // Usage:
 
-//  int status = LAGraph_Realloc (&p, nitems_new, nitems_old, size_of_item, msg)
-//  if (status == GrB_SUCCESS)
-//  {
-//      p points to a block of at least nitems_new*size_of_item bytes and
-//      the first part, of size min(nitems_new,nitems_old)*size_of_item,
-//      has the same content as the old memory block if it was present.
-//  }
-//  else
-//  {
-//      p points to the old block, unchanged.  This case never occurs if
-//      nitems_new < nitems_old.
-//  }
+//      p = LAGraph_Realloc (nitems_new, nitems_old, size_of_item, p, &ok)
+//      if (ok)
+//      {
+//          p points to a block of at least nitems_new*size_of_item bytes and
+//          the first part, of size min(nitems_new,nitems_old)*size_of_item,
+//          has the same content as the old memory block if it was present.
+//      }
+//      else
+//      {
+//          p points to the old block, unchanged.  This case never occurs if
+//          nitems_new < nitems_old.
+//      }
 
 #include "LG_internal.h"
 
-int LAGraph_Realloc
-(
-    // input/output:
-    void **p,               // old block to reallocate
-    // input:
+void *LAGraph_Realloc       // returns pointer to reallocated block of memory,
+(                           // or original block if reallocation fails.
     size_t nitems_new,      // new number of items in the object
     size_t nitems_old,      // old number of items in the object
     size_t size_of_item,    // size of each item
-    char *msg
+    // input/output
+    void *p,                // old block to reallocate
+    // output
+    bool *ok                // true if successful, false otherwise
 )
 {
-
-    //--------------------------------------------------------------------------
-    // check inputs
-    //--------------------------------------------------------------------------
-
-    LG_CLEAR_MSG ;
-    LG_ASSERT (p != NULL, GrB_NULL_POINTER) ;
 
     //--------------------------------------------------------------------------
     // malloc a new block if p is NULL on input
     //--------------------------------------------------------------------------
 
-    if ((*p) == NULL)
+    if (p == NULL)
     {
-        LG_TRY (LAGraph_Malloc (p, nitems_new, size_of_item, msg)) ;
-        return (GrB_SUCCESS) ;
+        p = LAGraph_Malloc (nitems_new, size_of_item) ;
+        (*ok) = (p != NULL) ;
+        return (p) ;
     }
 
     //--------------------------------------------------------------------------
@@ -69,20 +60,21 @@ int LAGraph_Realloc
     //--------------------------------------------------------------------------
 
     // make sure at least one item is allocated
-    nitems_old = LAGRAPH_MAX (1, nitems_old) ;
-    nitems_new = LAGRAPH_MAX (1, nitems_new) ;
+    nitems_old = LAGraph_MAX (1, nitems_old) ;
+    nitems_new = LAGraph_MAX (1, nitems_new) ;
 
     // make sure at least one byte is allocated
-    size_of_item = LAGRAPH_MAX (1, size_of_item) ;
+    size_of_item = LAGraph_MAX (1, size_of_item) ;
 
     size_t newsize, oldsize ;
-    bool ok = LG_Multiply_size_t (&newsize, nitems_new, size_of_item)
-           && LG_Multiply_size_t (&oldsize, nitems_old, size_of_item) ;
+    (*ok) = LG_Multiply_size_t (&newsize, nitems_new, size_of_item)
+         && LG_Multiply_size_t (&oldsize, nitems_old, size_of_item) ;
 
-    if (!ok || nitems_new > GrB_INDEX_MAX || size_of_item > GrB_INDEX_MAX)
+    if (!(*ok) || nitems_new > GrB_INDEX_MAX || size_of_item > GrB_INDEX_MAX)
     {
         // overflow
-        return (GrB_OUT_OF_MEMORY) ;
+        (*ok) = false ;
+        return (NULL) ;
     }
 
     //--------------------------------------------------------------------------
@@ -98,7 +90,8 @@ int LAGraph_Realloc
         // If the block does not change, or is shrinking but only by a small
         // amount, or is growing but still fits inside the existing block,
         // then leave the block as-is.
-        return (GrB_SUCCESS) ;
+        (*ok) = true ;
+        return (p) ;
     }
 
     //--------------------------------------------------------------------------
@@ -115,14 +108,15 @@ int LAGraph_Realloc
         //----------------------------------------------------------------------
 
         // allocate the new space
-        LG_TRY (LAGraph_Malloc (&pnew, nitems_new, size_of_item, msg)) ;
+        pnew = LAGraph_Malloc (nitems_new, size_of_item) ;
         // copy over the data from the old block to the new block
-        // copy from the old to the new space
-        memcpy (pnew, *p, LAGRAPH_MIN (oldsize, newsize)) ;
-        // free the old space
-        LG_TRY (LAGraph_Free (p, msg)) ;
-        (*p) = pnew ;
-
+        if (pnew != NULL)
+        {
+            // use a parallel memcpy
+            memcpy (pnew, p, LAGraph_MIN (oldsize, newsize)) ;
+            // free the old space
+            LAGraph_Free (&p) ;
+        }
     }
     else
     {
@@ -131,13 +125,17 @@ int LAGraph_Realloc
         // use realloc
         //----------------------------------------------------------------------
 
-        pnew = LAGraph_Realloc_function (*p, newsize) ;
-        if (pnew == NULL)
-        {
-            return (GrB_OUT_OF_MEMORY) ;
-        }
-        (*p) = pnew ;
+        pnew = LAGraph_Realloc_function (p, newsize) ;
     }
 
-    return (GrB_SUCCESS) ;
+    //--------------------------------------------------------------------------
+    // check if successful and return result
+    //--------------------------------------------------------------------------
+
+    // If the attempt to reduce the size of the block failed, the old block is
+    // unchanged.  So pretend to succeed.
+
+    (*ok) = (newsize < oldsize) || (pnew != NULL) ;
+    p = (pnew != NULL) ? pnew : p ;
+    return (p) ;
 }

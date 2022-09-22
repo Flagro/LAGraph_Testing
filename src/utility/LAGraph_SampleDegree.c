@@ -4,50 +4,45 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University
+// Contributed by Tim Davis, Texas A&M University.
 
 //------------------------------------------------------------------------------
 
 // LAGraph_SampleDegree computes estimates of the mean and median of the
 // row or column degree of a graph.
 
-#define LG_FREE_ALL LAGraph_Free ((void **) &samples, NULL) ;
+#define LAGraph_FREE_ALL LAGraph_Free ((void **) &samples) ;
 
 #include "LG_internal.h"
 
-int LAGraph_SampleDegree
+int LAGraph_SampleDegree        // returns 0 if successful, -1 if failure
 (
-    // output:
-    double *sample_mean,    // sampled mean degree
-    double *sample_median,  // sampled median degree
-    // input:
-    const LAGraph_Graph G,  // graph of n nodes
+    double *sample_mean,        // sampled mean degree
+    double *sample_median,      // sampled median degree
+    // input
+    LAGraph_Graph G,        // graph of n nodes
     bool byrow,             // if true, sample G->rowdegree, else G->coldegree
     int64_t nsamples,       // number of samples
     uint64_t seed,          // random number seed
     char *msg
 )
 {
-
     //--------------------------------------------------------------------------
     // check inputs
     //--------------------------------------------------------------------------
 
     LG_CLEAR_MSG ;
     int64_t *samples = NULL ;
-    LG_ASSERT (sample_mean != NULL, GrB_NULL_POINTER) ;
-    LG_ASSERT (sample_median != NULL, GrB_NULL_POINTER) ;
-    nsamples = LAGRAPH_MAX (nsamples, 1) ;
-    LG_TRY (LAGraph_CheckGraph (G, msg)) ;
+    LG_CHECK (sample_mean == NULL, -1, "sample_mean is null") ;
+    LG_CHECK (sample_median == NULL, -1, "sample_median is null") ;
+    nsamples = LAGraph_MAX (nsamples, 1) ;
+    LG_CHECK (LAGraph_CheckGraph (G, msg), -1, "graph is invalid") ;
 
     GrB_Vector Degree ;
 
-    if (G->kind == LAGraph_ADJACENCY_UNDIRECTED ||
-       (G->kind == LAGraph_ADJACENCY_DIRECTED &&
-        G->structure_is_symmetric == LAGraph_TRUE))
+    if (G->kind == LAGRAPH_ADJACENCY_UNDIRECTED ||
+       (G->kind == LAGRAPH_ADJACENCY_DIRECTED &&
+        G->A_structure_is_symmetric == LAGRAPH_TRUE))
     {
         // the structure of A is known to be symmetric
         Degree = G->rowdegree ;
@@ -58,14 +53,14 @@ int LAGraph_SampleDegree
         Degree = (byrow) ? G->rowdegree : G->coldegree ;
     }
 
-    LG_ASSERT_MSG (Degree != NULL,
-        LAGRAPH_PROPERTY_MISSING, "degree property unknown") ;
+    LG_CHECK (Degree == NULL, -1, "degree property unknown") ;
 
     //--------------------------------------------------------------------------
     // allocate workspace
     //--------------------------------------------------------------------------
 
-    LG_TRY (LAGraph_Malloc ((void **) &samples, nsamples, sizeof (int64_t), msg)) ;
+    samples = LAGraph_Malloc (nsamples, sizeof (int64_t)) ;
+    LG_CHECK (samples == NULL, -1, "out of memory") ;
 
     //--------------------------------------------------------------------------
     // pick nsamples nodes at random and determine their degree
@@ -78,16 +73,16 @@ int LAGraph_SampleDegree
     // function.
 
     GrB_Index n ;
-    GRB_TRY (GrB_Vector_size (&n, Degree)) ;
+    GrB_TRY (GrB_Vector_size (&n, Degree)) ;
 
     int64_t dsum = 0 ;
     for (int k = 0 ; k < nsamples ; k++)
     {
-        uint64_t result = LG_Random60 (&seed) ;
+        uint64_t result = LAGraph_Random60 (&seed) ;
         int64_t i = result % n ;
         // d = Degree (i)
         int64_t d ;
-        GRB_TRY (GrB_Vector_extractElement (&d, Degree, i)) ;
+        GrB_TRY (GrB_Vector_extractElement (&d, Degree, i)) ;
         samples [k] = d ;
         dsum += d ;
     }
@@ -103,6 +98,6 @@ int LAGraph_SampleDegree
     // free workspace and return result
     //--------------------------------------------------------------------------
 
-    LG_FREE_ALL ;
-    return (GrB_SUCCESS) ;
+    LAGraph_FREE_ALL ;
+    return (0) ;
 }

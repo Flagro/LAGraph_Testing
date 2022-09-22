@@ -4,23 +4,18 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University
+// Contributed by Tim Davis, Texas A&M University.
 
 //------------------------------------------------------------------------------
 
 #include "LG_internal.h"
 
-int LAGraph_DeleteProperties
+int LAGraph_DeleteProperties    // returns 0 if successful, -1 if failure
 (
-    // input/output:
-    LAGraph_Graph G,    // G stays valid, only cached properties are freed
+    LAGraph_Graph G,        // G stays valid, only cached properties are freed
     char *msg
 )
 {
-
     //--------------------------------------------------------------------------
     // check inputs
     //--------------------------------------------------------------------------
@@ -29,27 +24,26 @@ int LAGraph_DeleteProperties
     if (G == NULL)
     {
         // success: nothing to do
-        return (GrB_SUCCESS) ;
+        return (0) ;
     }
 
     //--------------------------------------------------------------------------
     // free all cached properties of the graph
     //--------------------------------------------------------------------------
 
-    GRB_TRY (GrB_free (&(G->AT))) ;
-    GRB_TRY (GrB_free (&(G->rowdegree))) ;
-    GRB_TRY (GrB_free (&(G->coldegree))) ;
-    GRB_TRY (GrB_free (&(G->emin))) ;
-    GRB_TRY (GrB_free (&(G->emax))) ;
+    GrB_TRY (GrB_free (&(G->AT))) ;
+    GrB_TRY (GrB_free (&(G->rowdegree))) ;
+    G->rowdegree_type = NULL;
+    GrB_TRY (GrB_free (&(G->coldegree))) ;
+    G->coldegree_type = NULL;
 
     //--------------------------------------------------------------------------
     // clear the scalar properties of the graph
     //--------------------------------------------------------------------------
 
-    G->structure_is_symmetric = LAGRAPH_UNKNOWN ;
-    G->emin_kind = LAGRAPH_UNKNOWN ;
-    G->emax_kind = LAGRAPH_UNKNOWN ;
-//  G->nonzero = LAGRAPH_UNKNOWN ;
+    G->A_structure_is_symmetric = LAGRAPH_UNKNOWN ;
     G->ndiag = LAGRAPH_UNKNOWN ;
-    return (GrB_SUCCESS) ;
+
+    // success
+    return (0) ;
 }

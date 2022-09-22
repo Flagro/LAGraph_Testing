@@ -4,20 +4,16 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University
+// Contributed by Tim Davis, Texas A&M University.
 
 //------------------------------------------------------------------------------
 
 #include "LG_internal.h"
 
-int LAGraph_KindName
+int LAGraph_KindName        // returns 0 if successful, -1 if failure
 (
-    char *name,     // name of the kind (user provided array of size at least
-                    // LAGRAPH_MAX_NAME_LEN)
-    LAGraph_Kind kind,  // graph kind
+    char **name,            // name of the kind
+    LAGraph_Kind kind,      // graph kind
     char *msg
 )
 {
@@ -27,7 +23,7 @@ int LAGraph_KindName
     //--------------------------------------------------------------------------
 
     LG_CLEAR_MSG ;
-    LG_ASSERT (name != NULL, GrB_NULL_POINTER) ;
+    LG_CHECK (name == NULL, -1, "name is NULL") ;
 
     //--------------------------------------------------------------------------
     // determine the name of the kind
@@ -35,12 +31,12 @@ int LAGraph_KindName
 
     switch (kind)
     {
-        case LAGraph_ADJACENCY_UNDIRECTED : strcpy (name, "undirected"); break ;
-        case LAGraph_ADJACENCY_DIRECTED :   strcpy (name, "directed")  ; break ;
-        case LAGraph_KIND_UNKNOWN :         strcpy (name, "unknown")   ; break ;
-        default : LG_ASSERT_MSG (false, GrB_INVALID_VALUE, "invalid kind") ;
+        case LAGRAPH_ADJACENCY_UNDIRECTED : (*name) = "undirected" ; break ;
+        case LAGRAPH_ADJACENCY_DIRECTED :   (*name) = "directed"   ; break ;
+        case LAGRAPH_KIND_UNKNOWN :         (*name) = "unknown"    ; break ;
+        default : LG_CHECK (true, -1, "invalid kind") ;
     }
 
-    return (GrB_SUCCESS) ;
+    return (0) ;
 }
 

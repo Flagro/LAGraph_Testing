@@ -4,10 +4,7 @@
 
 // LAGraph, (c) 2021 by The LAGraph Contributors, All Rights Reserved.
 // SPDX-License-Identifier: BSD-2-Clause
-// See additional acknowledgments in the LICENSE file,
-// or contact permission@sei.cmu.edu for the full terms.
-
-// Contributed by Timothy A. Davis, Texas A&M University
+// Contributed by Tim Davis, Texas A&M University.
 
 //------------------------------------------------------------------------------
 
@@ -16,20 +13,15 @@
 
 #include "LG_internal.h"
 
-int LAGraph_Free            // free a block of memory and set p to NULL
+void LAGraph_Free
 (
-    // input/output:
-    void **p,               // pointer to object to free, does nothing if NULL
-    char *msg
+    void **p                // pointer to object to free, does nothing if NULL
 )
 {
-    LG_CLEAR_MSG ;
 
     if (p != NULL && (*p) != NULL)
     {
         LAGraph_Free_function (*p) ;
         (*p) = NULL ;
     }
-
-    return (GrB_SUCCESS) ;
 }

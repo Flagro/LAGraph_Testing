@@ -32,7 +32,7 @@ perf_pattern = "AVG_PERF"
 correctness_pattern = "error_count:"
 
 #DATASETS_DIR = "./datasets/"
-DATASETS_DIR = "/home/afanasyev/LAGraph/src/benchmark/mtx_graphs"
+DATASETS_DIR = "./mtx_graphs"
 GRAPHS_DIR = DATASETS_DIR + "/input_graphs/"
 SOURCE_GRAPH_DIR = DATASETS_DIR + "/source_graphs/"
 MTX_GENERATOR_BIN_NAME = "gen"
